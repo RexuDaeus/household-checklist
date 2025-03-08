@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
-import { supabase } from "@/lib/supabase"
+import { supabase, getSiteUrl } from "@/lib/supabase"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -45,6 +45,7 @@ export default function RegisterPage() {
           data: {
             username,
           },
+          emailRedirectTo: `${getSiteUrl()}/auth/callback`
         },
       })
 
