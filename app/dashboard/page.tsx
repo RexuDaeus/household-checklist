@@ -92,7 +92,16 @@ export default function Dashboard() {
   }
 
   const deletePost = (id: string) => {
-    setPosts(posts.filter((post) => post.id !== id))
+    // Filter out the post to delete
+    const updatedPosts = posts.filter((post) => post.id !== id);
+    
+    // Update state with new posts array
+    setPosts(updatedPosts);
+    
+    // Also update localStorage immediately
+    localStorage.setItem("community_posts", JSON.stringify(updatedPosts));
+    
+    console.log(`Post ${id} deleted successfully`);
   }
 
   const formatDate = (dateString: string) => {

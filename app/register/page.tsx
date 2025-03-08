@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
-import { supabase, getSiteUrl } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Info } from "lucide-react"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -17,6 +19,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isRegistered, setIsRegistered] = useState(false)
   const router = useRouter()
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -45,7 +48,6 @@ export default function RegisterPage() {
           data: {
             username,
           },
-          emailRedirectTo: `${getSiteUrl()}/auth/callback`
         },
       })
 
@@ -86,13 +88,48 @@ export default function RegisterPage() {
         return
       }
 
-      router.push("/login?registered=true")
+      // Show verification message instead of redirecting
+      setIsRegistered(true)
+      setIsLoading(false)
     } catch (error) {
       console.error("Registration error:", error)
       setError(error instanceof Error ? error.message : "Failed to register")
-    } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isRegistered) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <SumikkoHeader hideAuth />
+        <div className="flex-1 flex items-center justify-center p-6 md:p-8">
+          <Card className="w-full max-w-md shadow-lg">
+            <CardHeader>
+              <CardTitle>Registration Successful</CardTitle>
+              <CardDescription>Please verify your email address</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert className="bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800">
+                <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                <AlertTitle className="text-sky-800 dark:text-sky-200 font-medium text-sm">Verification Required</AlertTitle>
+                <AlertDescription className="text-sky-700 dark:text-sky-300">
+                  We've sent a verification email to <strong>{email}</strong>. 
+                  Please check your inbox and click the verification link to complete your registration.
+                </AlertDescription>
+              </Alert>
+              <p className="text-sm text-muted-foreground mt-2">
+                Once verified, you'll be able to sign in to your account.
+              </p>
+            </CardContent>
+            <CardFooter className="flex flex-col space-y-2">
+              <Button className="w-full" onClick={() => router.push("/login")}>
+                Go to Login
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
