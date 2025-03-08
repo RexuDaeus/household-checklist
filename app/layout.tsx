@@ -19,7 +19,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@300;400;500;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-['M_PLUS_Rounded_1c']">
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <div className="min-h-screen bg-gradient-to-b from-background to-primary/5">
             {children}
           </div>
