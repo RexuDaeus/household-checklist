@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -10,29 +8,34 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
-
-// Import the auth helper functions
-import { loginUser } from "@/lib/auth"
+import { supabase } from "@/lib/supabase"
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError("")
+    setIsLoading(true)
 
-    if (!username || !password) {
-      setError("Please enter both username and password")
-      return
-    }
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    // Try to login with provided credentials
-    if (loginUser(username, password)) {
+      if (error) throw error
+
       router.push("/dashboard")
-    } else {
-      setError("Invalid username or password")
+      router.refresh()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to login")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -49,12 +52,14 @@ export default function LoginPage() {
             <CardContent className="space-y-4">
               {error && <p className="text-destructive text-sm">{error}</p>}
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
@@ -65,12 +70,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
+                  disabled={isLoading}
                 />
               </div>
             </CardContent>
             <CardFooter className="flex flex-col space-y-2">
-              <Button type="submit" className="w-full">
-                Login
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Logging in..." : "Login"}
               </Button>
               <p className="text-sm text-center">
                 Don't have an account?{" "}

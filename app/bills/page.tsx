@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, ChangeEvent } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Trash } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -9,125 +9,177 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { SumikkoCard } from "@/components/sumikko-card"
-
-interface User {
-  username: string;
-}
-
-interface Bill {
-  id: string;
-  name: string;
-  amount: number;
-  payers: string[];
-  createdBy: string;
-}
+import { supabase } from "@/lib/supabase"
+import type { Bill, Profile } from "@/lib/supabase"
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
   const [newBillName, setNewBillName] = useState("")
   const [newBillAmount, setNewBillAmount] = useState("")
   const [selectedPayers, setSelectedPayers] = useState<string[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [username, setUsername] = useState("")
+  const [users, setUsers] = useState<Profile[]>([])
+  const [currentUser, setCurrentUser] = useState<Profile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    // Get username from cookie
-    const cookies = document.cookie.split(";")
-    const userCookie = cookies.find((cookie) => cookie.trim().startsWith("user="))
+    async function loadData() {
+      try {
+        // Get current user session
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) {
+          router.push("/login")
+          return
+        }
 
-    if (userCookie) {
-      setUsername(userCookie.split("=")[1])
-    } else {
-      router.push("/login")
-      return
+        // Get current user profile
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single()
+
+        if (profile) {
+          setCurrentUser(profile)
+
+          // Get all other users
+          const { data: allUsers } = await supabase
+            .from("profiles")
+            .select("*")
+            .neq("id", session.user.id)
+
+          if (allUsers) {
+            setUsers(allUsers)
+          }
+
+          // Get all bills where user is creator or payer
+          const { data: userBills } = await supabase
+            .from("bills")
+            .select("*")
+            .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}}`)
+            .order("created_at", { ascending: false })
+
+          if (userBills) {
+            setBills(userBills)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading data:", error)
+      } finally {
+        setIsLoading(false)
+      }
     }
 
-    // Load bills from localStorage
-    const savedBills = localStorage.getItem("bills")
-    if (savedBills) {
-      setBills(JSON.parse(savedBills))
-    }
+    loadData()
 
-    // Load users from localStorage
-    const usersJson = localStorage.getItem("users")
-    if (usersJson) {
-      const parsedUsers = JSON.parse(usersJson)
-      // Filter out the current user from the payers list
-      const otherUsers = parsedUsers.filter((user: User) => user.username !== username)
-      setUsers(otherUsers)
-    }
-  }, [router, username])
+    // Set up real-time subscription for bills
+    const billsSubscription = supabase
+      .channel("bills")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bills"
+        },
+        async (payload) => {
+          // Reload bills when there's a change
+          const { data: userBills } = await supabase
+            .from("bills")
+            .select("*")
+            .or(`created_by.eq.${currentUser?.id},payers.cs.{${currentUser?.id}}`)
+            .order("created_at", { ascending: false })
 
-  useEffect(() => {
-    // Save bills to localStorage whenever they change
-    if (bills.length > 0) {
-      localStorage.setItem("bills", JSON.stringify(bills))
-    }
-  }, [bills])
+          if (userBills) {
+            setBills(userBills)
+          }
+        }
+      )
+      .subscribe()
 
-  const handleBillNameChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setNewBillName(e.target.value)
+    return () => {
+      billsSubscription.unsubscribe()
+    }
+  }, [router])
+
+  const handleNewBill = async () => {
+    if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
+
+    try {
+      const { data: bill, error } = await supabase
+        .from("bills")
+        .insert([{
+          title: newBillName,
+          amount: parseFloat(newBillAmount),
+          payers: selectedPayers,
+          created_by: currentUser.id,
+          due_date: new Date().toISOString()
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setNewBillName("")
+      setNewBillAmount("")
+      setSelectedPayers([])
+    } catch (error) {
+      console.error("Error adding bill:", error)
+    }
   }
 
-  const handleBillAmountChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setNewBillAmount(e.target.value)
-  }
+  const handleDeleteBill = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("bills")
+        .delete()
+        .eq("id", id)
 
-  const addBill = () => {
-    if (!newBillName || !newBillAmount || selectedPayers.length === 0) return
-
-    const newBill: Bill = {
-      id: Date.now().toString(),
-      name: newBillName,
-      amount: parseFloat(newBillAmount),
-      payers: selectedPayers,
-      createdBy: username
+      if (error) throw error
+    } catch (error) {
+      console.error("Error deleting bill:", error)
     }
-
-    setBills([...bills, newBill])
-    setNewBillName("")
-    setNewBillAmount("")
-    setSelectedPayers([])
   }
 
-  const deleteBill = (id: string) => {
-    setBills(bills.filter((bill) => bill.id !== id))
-  }
-
-  const togglePayer = (payerUsername: string) => {
+  const togglePayer = (payerId: string) => {
     setSelectedPayers(prev => 
-      prev.includes(payerUsername)
-        ? prev.filter(username => username !== payerUsername)
-        : [...prev, payerUsername]
+      prev.includes(payerId)
+        ? prev.filter(id => id !== payerId)
+        : [...prev, payerId]
     )
   }
 
-  // Calculate amount per person for a bill
   const getAmountPerPerson = (amount: number, payersCount: number) => {
     if (payersCount === 0) return "0.00"
     return (amount / payersCount).toFixed(2)
   }
 
-  // Group bills by creator, but only show bills where the user is a payer or creator
-  const billsByCreator = bills
-    .filter(bill => bill.createdBy === username || bill.payers.includes(username))
-    .reduce((acc, bill) => {
-      if (!acc[bill.createdBy]) {
-        acc[bill.createdBy] = []
-      }
-      acc[bill.createdBy].push(bill)
-      return acc
-    }, {} as Record<string, Bill[]>)
+  if (isLoading || !currentUser) {
+    return (
+      <div className="min-h-screen">
+        <SumikkoHeader showBackButton />
+        <div className="max-w-7xl mx-auto px-4">
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Group bills by creator
+  const billsByCreator = bills.reduce((acc, bill) => {
+    if (!acc[bill.created_by]) {
+      acc[bill.created_by] = []
+    }
+    acc[bill.created_by].push(bill)
+    return acc
+  }, {} as Record<string, Bill[]>)
 
   // Calculate totals for each creator
   const creatorTotals = Object.entries(billsByCreator).reduce((acc, [creator, bills]) => {
     acc[creator] = bills.reduce((sum, bill) => {
-      // If user is a payer, only count their share
-      if (bill.payers.includes(username) && bill.createdBy !== username) {
+      if (bill.payers.includes(currentUser.id) && bill.created_by !== currentUser.id) {
         return sum + (bill.amount / bill.payers.length)
       }
-      // If user is the creator, count the full amount
       return sum + bill.amount
     }, 0)
     return acc
@@ -135,7 +187,7 @@ export default function BillsPage() {
 
   return (
     <div className="min-h-screen">
-      <SumikkoHeader username={username} showBackButton />
+      <SumikkoHeader showBackButton />
       
       <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6">
         <SumikkoCard
@@ -149,7 +201,7 @@ export default function BillsPage() {
                 id="billName"
                 className="sumikko-input"
                 value={newBillName}
-                onChange={handleBillNameChange}
+                onChange={(e) => setNewBillName(e.target.value)}
                 placeholder="Enter bill name"
               />
             </div>
@@ -162,7 +214,7 @@ export default function BillsPage() {
                 step="0.01"
                 min="0"
                 value={newBillAmount}
-                onChange={handleBillAmountChange}
+                onChange={(e) => setNewBillAmount(e.target.value)}
                 placeholder="Enter total amount"
               />
               {newBillAmount && selectedPayers.length >= 0 && (
@@ -179,15 +231,15 @@ export default function BillsPage() {
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {users.map((user) => (
-                  <div key={user.username} className="flex items-center space-x-2">
+                  <div key={user.id} className="flex items-center space-x-2">
                     <Checkbox
-                      id={`payer-${user.username}`}
-                      checked={selectedPayers.includes(user.username)}
-                      onCheckedChange={() => togglePayer(user.username)}
+                      id={`payer-${user.id}`}
+                      checked={selectedPayers.includes(user.id)}
+                      onCheckedChange={() => togglePayer(user.id)}
                       className="sumikko-checkbox"
                     />
                     <Label 
-                      htmlFor={`payer-${user.username}`}
+                      htmlFor={`payer-${user.id}`}
                       className="text-sm font-medium"
                     >
                       {user.username}
@@ -198,7 +250,7 @@ export default function BillsPage() {
             </div>
             <Button 
               className="w-full sumikko-button"
-              onClick={addBill}
+              onClick={handleNewBill}
               disabled={!newBillName || !newBillAmount || selectedPayers.length === 0}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -207,48 +259,54 @@ export default function BillsPage() {
           </div>
         </SumikkoCard>
 
-        {Object.entries(billsByCreator).map(([creator, creatorBills]) => (
-          <SumikkoCard
-            key={creator}
-            title={creator === username ? "Bills You Created" : `Bills From ${creator}`}
-            subtitle={creator === username 
-              ? `Total amount: $${creatorTotals[creator].toFixed(2)}`
-              : `Your share: $${creatorTotals[creator].toFixed(2)}`
-            }
-          >
-            <ul className="space-y-4">
-              {creatorBills.map((bill) => (
-                <li key={bill.id} className="flex items-center justify-between gap-4 sumikko-list-item">
-                  <div>
-                    <div className="font-medium">{bill.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {creator === username ? (
-                        <>Total: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each</>
-                      ) : (
-                        <>Your share: ${getAmountPerPerson(bill.amount, bill.payers.length)}</>
-                      )}
+        {Object.entries(billsByCreator).map(([creatorId, creatorBills]) => {
+          const creator = users.find(u => u.id === creatorId) || currentUser
+          return (
+            <SumikkoCard
+              key={creatorId}
+              title={creatorId === currentUser.id ? "Bills You Created" : `Bills From ${creator.username}`}
+              subtitle={creatorId === currentUser.id 
+                ? `Total amount: $${creatorTotals[creatorId].toFixed(2)}`
+                : `Your share: $${creatorTotals[creatorId].toFixed(2)}`
+              }
+            >
+              <ul className="space-y-4">
+                {creatorBills.map((bill) => (
+                  <li key={bill.id} className="flex items-center justify-between gap-4 sumikko-list-item">
+                    <div>
+                      <div className="font-medium">{bill.title}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {creatorId === currentUser.id ? (
+                          <>Total: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each</>
+                        ) : (
+                          <>Your share: ${getAmountPerPerson(bill.amount, bill.payers.length)}</>
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {creatorId === currentUser.id ? (
+                          <>To be paid by: {bill.payers.map(id => 
+                            users.find(u => u.id === id)?.username
+                          ).join(", ")}</>
+                        ) : (
+                          <>Other payers: {bill.payers.filter(id => id !== currentUser.id)
+                            .map(id => users.find(u => u.id === id)?.username).join(", ")}</>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {creator === username ? (
-                        <>To be paid by: {bill.payers.join(", ")}</>
-                      ) : (
-                        <>Other payers: {bill.payers.filter(payer => payer !== username).join(", ")}</>
-                      )}
-                    </div>
-                  </div>
-                  {creator === username && (
-                    <Button
-                      className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                      onClick={() => deleteBill(bill.id)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </SumikkoCard>
-        ))}
+                    {creatorId === currentUser.id && (
+                      <Button
+                        className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
+                        onClick={() => handleDeleteBill(bill.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </SumikkoCard>
+          )
+        })}
       </div>
     </div>
   )

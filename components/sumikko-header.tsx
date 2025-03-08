@@ -1,21 +1,58 @@
+"use client"
+
 import { Home, LogOut } from "lucide-react"
 import { ModeToggle } from "./mode-toggle"
 import { Button, buttonVariants } from "./ui/button"
 import { useRouter } from "next/navigation"
-import { deleteCookie } from "cookies-next"
+import { supabase } from "@/lib/supabase"
+import { useEffect, useState } from "react"
 
 interface SumikkoHeaderProps {
-  username?: string
   showBackButton?: boolean
   hideAuth?: boolean
 }
 
-export function SumikkoHeader({ username, showBackButton = false, hideAuth = false }: SumikkoHeaderProps) {
+export function SumikkoHeader({ showBackButton = false, hideAuth = false }: SumikkoHeaderProps) {
   const router = useRouter()
+  const [username, setUsername] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const handleLogout = () => {
-    deleteCookie("user")
-    router.push("/login")
+  useEffect(() => {
+    async function getUser() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", session.user.id)
+            .single()
+          
+          setUsername(profile?.username || null)
+        }
+      } catch (error) {
+        console.error("Error fetching user:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    getUser()
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("Error logging out:", error)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="w-full h-[88px] bg-background" />
   }
 
   return (

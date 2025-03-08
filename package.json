@@ -37,6 +37,7 @@
     "@radix-ui/react-toggle": "^1.1.1",
     "@radix-ui/react-toggle-group": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -62,10 +63,12 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8",
+    "supabase-cli": "^0.0.21",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   }

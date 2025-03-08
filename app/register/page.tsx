@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -10,35 +8,89 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
-
-// Import the auth helper functions
-import { registerUser } from "@/lib/auth"
+import { supabase } from "@/lib/supabase"
 
 export default function RegisterPage() {
+  const [email, setEmail] = useState("")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError("")
+    setIsLoading(true)
 
-    if (!username || !password || !confirmPassword) {
+    if (!email || !username || !password || !confirmPassword) {
       setError("Please fill in all fields")
+      setIsLoading(false)
       return
     }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match")
+      setIsLoading(false)
       return
     }
 
-    // Try to register the user
-    if (registerUser(username, password)) {
-      router.push("/login")
-    } else {
-      setError("Username already exists")
+    try {
+      // Register the user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+          },
+        },
+      })
+
+      if (authError) {
+        setError(`Auth Error: ${authError.message}`)
+        setIsLoading(false)
+        return
+      }
+
+      if (!authData.user?.id) {
+        setError("Failed to create user account")
+        setIsLoading(false)
+        return
+      }
+
+      // Create a profile in the profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .insert([{
+          id: authData.user.id,
+          username: username,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+
+      if (profileError) {
+        console.error("Profile creation error details:", {
+          error: profileError,
+          errorMessage: profileError.message,
+          errorDetails: profileError.details,
+          hint: profileError.hint,
+          code: profileError.code
+        })
+        setError(`Profile Error: ${profileError.message}. Code: ${profileError.code}`)
+        // Try to clean up the auth user since profile creation failed
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        return
+      }
+
+      router.push("/login?registered=true")
+    } catch (error) {
+      console.error("Registration error:", error)
+      setError(error instanceof Error ? error.message : "Failed to register")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -55,12 +107,24 @@ export default function RegisterPage() {
             <CardContent className="space-y-4">
               {error && <p className="text-destructive text-sm">{error}</p>}
               <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Choose a username"
+                  disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
@@ -71,6 +135,7 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Choose a password"
+                  disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
@@ -81,12 +146,13 @@ export default function RegisterPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm your password"
+                  disabled={isLoading}
                 />
               </div>
             </CardContent>
             <CardFooter className="flex flex-col space-y-2">
-              <Button type="submit" className="w-full">
-                Create Account
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Creating Account..." : "Create Account"}
               </Button>
               <p className="text-sm text-center">
                 Already have an account?{" "}
