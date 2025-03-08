@@ -108,7 +108,8 @@ export default function ChoresPage() {
           title: newChoreName,
           frequency: newChoreFrequency,
           assigned_to: null,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          lastReset: new Date().toISOString()
         }])
 
       if (error) throw error

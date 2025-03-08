@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AutoChoreResetProvider } from "@/components/auto-chore-reset-provider"
 
 export const metadata: Metadata = {
   title: "Sumikko House - Unit 202/6 Joseph Road",
@@ -20,9 +21,11 @@ export default function RootLayout({
       </head>
       <body className="font-['M_PLUS_Rounded_1c']">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <div className="min-h-screen bg-gradient-to-b from-background to-primary/5">
-            {children}
-          </div>
+          <AutoChoreResetProvider>
+            <div className="min-h-screen bg-gradient-to-b from-background to-primary/5">
+              {children}
+            </div>
+          </AutoChoreResetProvider>
         </ThemeProvider>
       </body>
     </html>

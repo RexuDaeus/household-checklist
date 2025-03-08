@@ -13,18 +13,19 @@ interface Chore {
   frequency: string
   completed: boolean
   completedBy?: string
+  lastReset?: string
 }
 
 const defaultChores: Omit<Chore, "id">[] = [
-  { name: "Take out trash", frequency: "daily", completed: false },
-  { name: "Wash dishes", frequency: "daily", completed: false },
-  { name: "Sweep floors", frequency: "daily", completed: false },
-  { name: "Clean bathroom", frequency: "weekly", completed: false },
-  { name: "Vacuum living room", frequency: "weekly", completed: false },
-  { name: "Change bed sheets", frequency: "weekly", completed: false },
-  { name: "Deep clean kitchen", frequency: "monthly", completed: false },
-  { name: "Clean refrigerator", frequency: "monthly", completed: false },
-  { name: "Dust all surfaces", frequency: "monthly", completed: false },
+  { name: "Take out trash", frequency: "daily", completed: false, lastReset: new Date().toISOString() },
+  { name: "Wash dishes", frequency: "daily", completed: false, lastReset: new Date().toISOString() },
+  { name: "Sweep floors", frequency: "daily", completed: false, lastReset: new Date().toISOString() },
+  { name: "Clean bathroom", frequency: "weekly", completed: false, lastReset: new Date().toISOString() },
+  { name: "Vacuum living room", frequency: "weekly", completed: false, lastReset: new Date().toISOString() },
+  { name: "Change bed sheets", frequency: "weekly", completed: false, lastReset: new Date().toISOString() },
+  { name: "Deep clean kitchen", frequency: "monthly", completed: false, lastReset: new Date().toISOString() },
+  { name: "Clean refrigerator", frequency: "monthly", completed: false, lastReset: new Date().toISOString() },
+  { name: "Dust all surfaces", frequency: "monthly", completed: false, lastReset: new Date().toISOString() },
 ]
 
 export default function InitializeChoresPage() {
