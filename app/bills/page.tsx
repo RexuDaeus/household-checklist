@@ -271,45 +271,38 @@ export default function BillsPage() {
               }
             >
               <ul className="space-y-4">
-                {creatorBills.map((bill) => {
-                  // Find the creator profile
-                  const creatorProfile = creatorId === currentUser.id ? currentUser : users.find(u => u.id === creatorId);
-                  return (
-                    <li key={bill.id} className="flex items-center justify-between gap-4 sumikko-list-item">
-                      <div>
-                        <div className="font-medium">{bill.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {creatorId === currentUser.id ? (
-                            <>Total: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each</>
-                          ) : (
-                            <>Your share: ${getAmountPerPerson(bill.amount, bill.payers.length)}</>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Created by: <span className="font-medium">{creatorProfile?.username || "Unknown"}</span>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {creatorId === currentUser.id ? (
-                            <>To be paid by: {bill.payers.map(id => 
-                              users.find(u => u.id === id)?.username
-                            ).join(", ")}</>
-                          ) : (
-                            <>Other payers: {bill.payers.filter(id => id !== currentUser.id)
-                              .map(id => users.find(u => u.id === id)?.username).join(", ")}</>
-                          )}
-                        </div>
+                {creatorBills.map((bill) => (
+                  <li key={bill.id} className="flex items-center justify-between gap-4 sumikko-list-item">
+                    <div>
+                      <div className="font-medium">{bill.title}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {creatorId === currentUser.id ? (
+                          <>Total: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each</>
+                        ) : (
+                          <>Your share: ${getAmountPerPerson(bill.amount, bill.payers.length)}</>
+                        )}
                       </div>
-                      {creatorId === currentUser.id && (
-                        <Button
-                          className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                          onClick={() => handleDeleteBill(bill.id)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </li>
-                  );
-                })}
+                      <div className="text-sm text-muted-foreground">
+                        {creatorId === currentUser.id ? (
+                          <>To be paid by: {bill.payers.map(id => 
+                            users.find(u => u.id === id)?.username
+                          ).join(", ")}</>
+                        ) : (
+                          <>Other payers: {bill.payers.filter(id => id !== currentUser.id)
+                            .map(id => users.find(u => u.id === id)?.username).join(", ")}</>
+                        )}
+                      </div>
+                    </div>
+                    {creatorId === currentUser.id && (
+                      <Button
+                        className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
+                        onClick={() => handleDeleteBill(bill.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </li>
+                ))}
               </ul>
             </SumikkoCard>
           )
