@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 45 30% 95%;
+    --foreground: 200 14% 25%;
+
+    --card: 45 30% 95%;
+    --card-foreground: 200 14% 25%;
+
+    --popover: 45 30% 95%;
+    --popover-foreground: 200 14% 25%;
+
+    --primary: 174 35% 55%;
+    --primary-foreground: 200 14% 25%;
+
+    --secondary: 35 90% 88%;
+    --secondary-foreground: 200 14% 25%;
+
+    --muted: 35 90% 92%;
+    --muted-foreground: 200 14% 40%;
+
+    --accent: 350 80% 85%;
+    --accent-foreground: 200 14% 25%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 174 35% 80%;
+    --input: 174 35% 80%;
+    --ring: 174 35% 55%;
+
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 200 30% 15%;
+    --foreground: 45 30% 98%;
+
+    --card: 200 30% 18%;
+    --card-foreground: 45 30% 98%;
+
+    --popover: 200 30% 18%;
+    --popover-foreground: 45 30% 98%;
+
+    --primary: 174 35% 45%;
+    --primary-foreground: 45 30% 98%;
+
+    --secondary: 200 30% 25%;
+    --secondary-foreground: 45 30% 98%;
+
+    --muted: 200 30% 20%;
+    --muted-foreground: 45 30% 80%;
+
+    --accent: 350 50% 30%;
+    --accent-foreground: 45 30% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 45 30% 98%;
+
+    --border: 200 30% 25%;
+    --input: 200 30% 25%;
+    --ring: 174 35% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: url('/sumikko/pattern.svg');
+    background-repeat: repeat;
+    background-size: 60px;
+  }
+}
+
+@layer components {
+  .sumikko-card {
+    @apply rounded-3xl bg-white/80 dark:bg-card/80 backdrop-blur-sm shadow-lg border-2 border-primary/20 p-6 transition-all duration-300 hover:shadow-xl hover:bg-white/90 dark:hover:bg-card/90;
+  }
+  
+  .sumikko-button {
+    @apply rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 hover:shadow-md active:scale-95 dark:hover:bg-primary/80;
+  }
+  
+  .sumikko-input {
+    @apply rounded-full border-2 border-primary/20 bg-white/80 dark:bg-card/80 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300;
+  }
+  
+  .sumikko-checkbox {
+    @apply rounded-full border-2 border-primary/20 text-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300;
+  }
+  
+  .sumikko-title {
+    @apply text-2xl font-bold text-primary mb-4;
+  }
+
+  .sumikko-list-item {
+    @apply p-3 rounded-2xl bg-background/50 dark:bg-secondary/30 hover:bg-background/80 dark:hover:bg-secondary/40 transition-colors;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Import Google Font */
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@300;400;500;700&display=swap');
+
+
