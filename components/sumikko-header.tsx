@@ -10,14 +10,24 @@ import { useEffect, useState } from "react"
 interface SumikkoHeaderProps {
   showBackButton?: boolean
   hideAuth?: boolean
+  username?: string
 }
 
-export function SumikkoHeader({ showBackButton = false, hideAuth = false }: SumikkoHeaderProps) {
+export function SumikkoHeader({ 
+  showBackButton = false, 
+  hideAuth = false,
+  username: propUsername
+}: SumikkoHeaderProps) {
   const router = useRouter()
-  const [username, setUsername] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [username, setUsername] = useState<string | null>(propUsername || null)
+  const [isLoading, setIsLoading] = useState(!propUsername)
 
   useEffect(() => {
+    if (propUsername) {
+      setIsLoading(false)
+      return
+    }
+
     async function getUser() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -38,12 +48,21 @@ export function SumikkoHeader({ showBackButton = false, hideAuth = false }: Sumi
     }
 
     getUser()
-  }, [])
+  }, [propUsername])
+
+  useEffect(() => {
+    if (propUsername) {
+      setUsername(propUsername)
+    }
+  }, [propUsername])
 
   const handleLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
+
+      document.cookie = "user=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+      
       router.push("/login")
       router.refresh()
     } catch (error) {

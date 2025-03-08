@@ -33,11 +33,14 @@ export default function Dashboard() {
   const router = useRouter()
 
   useEffect(() => {
+    console.log("Dashboard: Checking authentication...")
     const username = getUserFromCookie()
+    console.log("Dashboard: Username from cookie:", username)
 
     if (username) {
       setUsername(username)
     } else {
+      console.log("Dashboard: No user found, redirecting to login")
       router.push("/login")
     }
 

@@ -1,31 +1,22 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
-import { supabase, getSiteUrl } from "@/lib/supabase"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { supabase } from "@/lib/supabase"
+import { setUserCookie } from "@/lib/auth"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
-
-  useEffect(() => {
-    // Check if user just registered
-    if (searchParams.get('registered') === 'true') {
-      setSuccess("Account created! Please verify your email before logging in.")
-    }
-  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,52 +24,50 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
+      console.log("Attempting to login with:", { email })
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        if (error.message.includes('Email not confirmed')) {
-          setError(`Email not confirmed. Please check your inbox and spam folder for the verification email.
-            If you need a new verification email, please use the resend option below.`)
-        } else {
-          throw error
-        }
-      } else {
-        router.push("/dashboard")
-        router.refresh()
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to login")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+      console.log("Supabase login response:", { data, error })
 
-  const handleResendVerification = async () => {
-    if (!email) {
-      setError("Please enter your email address first")
-      return
-    }
-    
-    setIsLoading(true)
-    setError("")
-    
-    try {
-      const { data, error } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-        options: {
-          emailRedirectTo: `${getSiteUrl()}/auth/callback`
-        }
-      })
-      
       if (error) throw error
+
+      // Extract username from email (remove @domain.com)
+      const username = email.split('@')[0]
       
-      setSuccess("Verification email resent. Please check your inbox and spam folder.")
+      try {
+        // Also attempt to get profile data if available
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', data.user.id)
+          .single()
+          
+        console.log("Profile data:", profileData)
+        
+        // Use profile username if available, otherwise use email-based username
+        const displayUsername = profileData?.username || username
+        
+        // Important: Set cookie with username for dashboard
+        setUserCookie(displayUsername)
+        
+        console.log("Login successful, username set:", displayUsername)
+      } catch (profileError) {
+        console.error("Error fetching profile, using fallback username:", username, profileError)
+        // Still set the cookie with email-based username if profile fetch fails
+        setUserCookie(username)
+      }
+      
+      console.log("Login successful, redirecting to dashboard")
+      
+      // Force a hard navigation instead of client-side navigation
+      window.location.href = "/dashboard"
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to resend verification email")
+      console.error("Login error:", error)
+      setError(error instanceof Error ? error.message : "Failed to login")
     } finally {
       setIsLoading(false)
     }
@@ -95,18 +84,7 @@ export default function LoginPage() {
           </CardHeader>
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription className="text-sm">{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              {success && (
-                <Alert>
-                  <AlertDescription className="text-sm">{success}</AlertDescription>
-                </Alert>
-              )}
-              
+              {error && <p className="text-destructive text-sm">{error}</p>}
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -134,19 +112,6 @@ export default function LoginPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
-              
-              {error && error.includes("Email not confirmed") && (
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-full mt-2" 
-                  onClick={handleResendVerification}
-                  disabled={isLoading}
-                >
-                  Resend Verification Email
-                </Button>
-              )}
-              
               <p className="text-sm text-center">
                 Don't have an account?{" "}
                 <Link href="/register" className="underline">
