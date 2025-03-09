@@ -28,6 +28,8 @@ export type Chore = {
   title: string;
   frequency: 'daily' | 'weekly' | 'monthly';
   assigned_to: string | null;
+  created_by?: string;
+  is_completed?: boolean;
   created_at: string;
   lastReset?: string;
 };

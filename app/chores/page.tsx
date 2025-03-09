@@ -99,32 +99,36 @@ export default function ChoresPage() {
   }, [router])
 
   const handleAddChore = async () => {
-    if (!newChoreName || !currentUser) return
+    if (!newChoreName || !currentUser) return;
 
     try {
-      console.log("Creating new chore:", {
+      // Get current user session to ensure we have a valid user ID
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        alert("You must be logged in to add a chore.");
+        return;
+      }
+
+      const newChore = {
         title: newChoreName,
         frequency: newChoreFrequency,
         assigned_to: null,
+        created_by: session.user.id, // Set the creator of the chore
         created_at: new Date().toISOString(),
         lastReset: new Date().toISOString()
-      });
+      };
+
+      console.log("Creating new chore:", newChore);
 
       const { error } = await supabase
         .from("chores")
-        .insert([{
-          title: newChoreName,
-          frequency: newChoreFrequency,
-          assigned_to: null,
-          created_at: new Date().toISOString(),
-          lastReset: new Date().toISOString()
-        }]);
+        .insert([newChore]);
 
       if (error) {
         console.error("Supabase error adding chore:", error);
         
         // Fallback to local state update if database fails
-        const newChore: Chore = {
+        const localChore: Chore = {
           id: Date.now().toString(),
           title: newChoreName,
           frequency: newChoreFrequency,
@@ -133,7 +137,7 @@ export default function ChoresPage() {
           lastReset: new Date().toISOString()
         };
         
-        setChores(prevChores => [newChore, ...prevChores]);
+        setChores(prevChores => [localChore, ...prevChores]);
         alert("Chore added locally. Note: Database sync failed, but chore is visible for this session.");
       }
 
@@ -146,14 +150,24 @@ export default function ChoresPage() {
 
   const handleAssignChore = async (choreId: string, userId: string | null) => {
     try {
+      // If userId is an empty string or "unassigned", convert it to null
+      const assignedTo = userId === "" || userId === "unassigned" ? null : userId;
+      
       const { error } = await supabase
         .from("chores")
-        .update({ assigned_to: userId })
-        .eq("id", choreId)
+        .update({ assigned_to: assignedTo })
+        .eq("id", choreId);
 
-      if (error) throw error
+      if (error) {
+        console.error("Error assigning chore:", error);
+        alert("Failed to assign chore. The change will only be visible temporarily.");
+        // Update UI optimistically
+        setChores(prevChores => prevChores.map(chore => 
+          chore.id === choreId ? { ...chore, assigned_to: assignedTo } : chore
+        ));
+      }
     } catch (error) {
-      console.error("Error assigning chore:", error)
+      console.error("Error assigning chore:", error);
     }
   }
 
@@ -201,13 +215,13 @@ export default function ChoresPage() {
             <div className="flex gap-2">
               <Select
                 value={chore.assigned_to || ""}
-                onValueChange={(value: string) => handleAssignChore(chore.id, value || null)}
+                onValueChange={(value) => handleAssignChore(chore.id, value)}
               >
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Assign to..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassign</SelectItem>
+                  <SelectItem value="unassigned">Unassign</SelectItem>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.username}
