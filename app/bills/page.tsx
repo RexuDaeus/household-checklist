@@ -36,6 +36,7 @@ export default function BillsPage() {
     payee: "",
     due_date: ""
   })
+  const [totalOwed, setTotalOwed] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -141,6 +142,15 @@ export default function BillsPage() {
 
     loadData()
   }, [router])
+
+  useEffect(() => {
+    // Calculate total owed by summing per person amounts
+    const total = bills.reduce((acc, bill) => {
+      const perPersonAmount = bill.amount / bill.payers.length;
+      return acc + perPersonAmount;
+    }, 0);
+    setTotalOwed(total);
+  }, [bills]);
 
   const handleNewBill = async () => {
     if (!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0 || !currentUser) return
@@ -554,13 +564,17 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
                                     Date: {format(new Date(bill.due_date), "PPP")}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
@@ -672,8 +686,8 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
@@ -721,11 +735,7 @@ export default function BillsPage() {
             <h2 className="text-2xl font-bold mb-4">
               Money You Owe to Others
               <span className="ml-2 text-lg font-semibold text-primary">
-                ${Object.values(otherBillsByPayee).reduce((total, bills) => {
-                  return total + bills.reduce((subtotal, bill) => {
-                    return subtotal + parseFloat(getPerPersonTotal(bill));
-                  }, 0);
-                }, 0).toFixed(2)} • {Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0)} bill{Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0) !== 1 ? 's' : ''}
+                ${totalOwed.toFixed(2)} • {Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0)} bill{Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0) !== 1 ? 's' : ''}
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -816,13 +826,17 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
                                     Date: {format(new Date(bill.due_date), "PPP")}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
