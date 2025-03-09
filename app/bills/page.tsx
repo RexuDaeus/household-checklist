@@ -515,15 +515,17 @@ export default function BillsPage() {
   }
 
   return (
-    <div className="flex justify-between items-center max-w-7xl mx-auto px-4 py-2">
-      <SumikkoHeader showBackButton />
-      <Button 
-        variant="outline"
-        onClick={() => router.push("/bills/archive")}
-        className="ml-auto"
-      >
-        View Archived Bills
-      </Button>
+    <div className="min-h-screen">
+      <div className="flex justify-between items-center max-w-7xl mx-auto px-4 py-2">
+        <SumikkoHeader showBackButton />
+        <Button 
+          variant="outline"
+          onClick={() => router.push("/bills/archive")}
+          className="ml-auto"
+        >
+          View Archived Bills
+        </Button>
+      </div>
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
         <SumikkoCard
