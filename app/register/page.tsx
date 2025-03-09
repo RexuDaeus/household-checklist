@@ -14,7 +14,7 @@ import { Info } from "lucide-react"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
-  const [username, setUsername] = useState("")
+  const [name, setName] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
@@ -27,7 +27,7 @@ export default function RegisterPage() {
     setError("")
     setIsLoading(true)
 
-    if (!email || !username || !password || !confirmPassword) {
+    if (!email || !name || !password || !confirmPassword) {
       setError("Please fill in all fields")
       setIsLoading(false)
       return
@@ -46,7 +46,7 @@ export default function RegisterPage() {
         password,
         options: {
           data: {
-            username,
+            name,
           },
         },
       })
@@ -68,7 +68,7 @@ export default function RegisterPage() {
         .from("profiles")
         .insert([{
           id: authData.user.id,
-          username: username,
+          username: name,
           created_at: new Date().toISOString()
         }])
         .select()
@@ -159,10 +159,10 @@ export default function RegisterPage() {
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your name"
-                  disabled={isLoading}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Choose a name"
+                  required
                 />
               </div>
               <div className="space-y-2">

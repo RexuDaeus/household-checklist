@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { supabase } from "@/lib/supabase"
 import type { CommunityPost, Profile } from "@/lib/supabase"
-import { useGuest } from "@/lib/guest-context"
 
 export default function CommunityPage() {
   const [posts, setPosts] = useState<(CommunityPost & { author: Profile })[]>([])
@@ -23,30 +22,11 @@ export default function CommunityPage() {
   const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
-  const { isGuest } = useGuest()
 
   useEffect(() => {
     async function loadData() {
       try {
-        setIsLoading(true)
-        
-        // For guest mode, load data without requiring auth
-        if (isGuest) {
-          // Get all posts with author information
-          const { data: allPosts } = await supabase
-            .from("community_posts")
-            .select("*, author:profiles(*)")
-            .order("created_at", { ascending: false })
-
-          if (allPosts) {
-            setPosts(allPosts as (CommunityPost & { author: Profile })[])
-          }
-          
-          setIsLoading(false)
-          return
-        }
-        
-        // For authenticated users, proceed with normal flow
+        // Get current user session
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
           router.push("/login")
@@ -109,7 +89,7 @@ export default function CommunityPage() {
     return () => {
       postsSubscription.unsubscribe()
     }
-  }, [router, isGuest])
+  }, [router])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
@@ -118,7 +98,7 @@ export default function CommunityPage() {
   }
 
   const handleUpload = async () => {
-    if (!file || !caption || !currentUser || isGuest) return
+    if (!file || !caption || !currentUser) return
 
     setIsUploading(true)
 
@@ -187,7 +167,7 @@ export default function CommunityPage() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
         <SumikkoHeader showBackButton />
@@ -203,57 +183,43 @@ export default function CommunityPage() {
       <SumikkoHeader showBackButton />
       
       <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-        {isGuest ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Guest Mode</CardTitle>
-              <CardDescription>You are viewing in guest mode</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                You need to be logged in to share photos. You can view community posts but cannot add new ones.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Share a Photo</CardTitle>
-              <CardDescription>Upload a photo to share with your housemates</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="photo">Photo</Label>
-                <Input
-                  ref={fileInputRef}
-                  id="photo"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={isUploading || isGuest}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="caption">Caption</Label>
-                <Textarea
-                  id="caption"
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Write a caption..."
-                  disabled={isUploading || isGuest}
-                />
-              </div>
-              <Button
-                className="w-full"
-                onClick={handleUpload}
-                disabled={!file || !caption || isUploading || isGuest}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                {isUploading ? "Uploading..." : "Share Photo"}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Share a Photo</CardTitle>
+            <CardDescription>Upload a photo to share with your housemates</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="photo">Photo</Label>
+              <Input
+                ref={fileInputRef}
+                id="photo"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                disabled={isUploading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="caption">Caption</Label>
+              <Textarea
+                id="caption"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Write a caption..."
+                disabled={isUploading}
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleUpload}
+              disabled={!file || !caption || isUploading}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {isUploading ? "Uploading..." : "Share Photo"}
+            </Button>
+          </CardContent>
+        </Card>
 
         <div className="space-y-6">
           {posts.map((post) => (
@@ -275,7 +241,7 @@ export default function CommunityPage() {
                       {new Date(post.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  {!isGuest && post.user_id === currentUser?.id && (
+                  {post.user_id === currentUser.id && (
                     <Button
                       className={buttonVariants({
                         variant: "ghost",

@@ -6,26 +6,24 @@ import { Button, buttonVariants } from "./ui/button"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
-import { useGuest } from "@/lib/guest-context"
 
 interface SumikkoHeaderProps {
   showBackButton?: boolean
   hideAuth?: boolean
-  username?: string
+  name?: string
 }
 
 export function SumikkoHeader({ 
   showBackButton = false, 
   hideAuth = false,
-  username: propUsername
+  name: propName
 }: SumikkoHeaderProps) {
   const router = useRouter()
-  const [username, setUsername] = useState<string | null>(propUsername || null)
-  const [isLoading, setIsLoading] = useState(!propUsername)
-  const { isGuest, setIsGuest } = useGuest()
+  const [name, setName] = useState<string | null>(propName || null)
+  const [isLoading, setIsLoading] = useState(!propName)
 
   useEffect(() => {
-    if (propUsername) {
+    if (propName) {
       setIsLoading(false)
       return
     }
@@ -40,7 +38,7 @@ export function SumikkoHeader({
             .eq("id", session.user.id)
             .single()
           
-          setUsername(profile?.username || null)
+          setName(profile?.username || null)
         }
       } catch (error) {
         console.error("Error fetching user:", error)
@@ -50,22 +48,18 @@ export function SumikkoHeader({
     }
 
     getUser()
-  }, [propUsername])
+  }, [propName])
 
   useEffect(() => {
-    if (propUsername) {
-      setUsername(propUsername)
+    if (propName) {
+      setName(propName)
     }
-  }, [propUsername])
+  }, [propName])
 
   const handleLogout = async () => {
     try {
-      if (isGuest) {
-        setIsGuest(false)
-      } else {
-        const { error } = await supabase.auth.signOut()
-        if (error) throw error
-      }
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
 
       document.cookie = "user=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
       
@@ -98,29 +92,20 @@ export function SumikkoHeader({
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {(username || isGuest) && !hideAuth && (
+            {name && !hideAuth && (
               <>
                 <button
-                  onClick={() => !isGuest && router.push("/account")}
-                  className={`flex items-center gap-2 px-4 py-2 bg-secondary rounded-full ${
-                    !isGuest ? "hover:bg-secondary/80 transition-colors cursor-pointer" : "cursor-default"
-                  }`}
+                  onClick={() => router.push("/account")}
+                  className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                     <span className="text-sm font-medium text-primary">
-                      {isGuest ? "G" : username?.charAt(0).toUpperCase()}
+                      {name.charAt(0).toUpperCase()}
                     </span>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">
-                      {isGuest ? "Guest" : `Hi, ${username}`}
-                    </span>
-                    {isGuest && (
-                      <span className="text-xs text-muted-foreground">
-                        View-only mode
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-sm font-medium">
+                    Welcome, {name}
+                  </span>
                 </button>
                 {showBackButton && (
                   <Button
@@ -135,7 +120,7 @@ export function SumikkoHeader({
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4" />
-                  {isGuest ? "Exit Guest Mode" : "Logout"}
+                  Logout
                 </Button>
               </>
             )}

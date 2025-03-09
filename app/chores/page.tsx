@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { supabase } from "@/lib/supabase"
 import type { Chore, Profile } from "@/lib/supabase"
-import { useGuest } from "@/lib/guest-context"
 
 export default function ChoresPage() {
   const [chores, setChores] = useState<Chore[]>([])
@@ -21,47 +20,16 @@ export default function ChoresPage() {
   const [users, setUsers] = useState<Profile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-  const { isGuest } = useGuest()
 
   useEffect(() => {
     async function loadData() {
       try {
-        setIsLoading(true)
-        
-        // For guest mode, load data without requiring auth
-        if (isGuest) {
-          // Get all users
-          const { data: allUsers } = await supabase
-            .from("profiles")
-            .select("*")
-
-          if (allUsers) {
-            setUsers(allUsers)
-          }
-
-          // Get all chores
-          const { data: allChores } = await supabase
-            .from("chores")
-            .select("*")
-            .order("created_at", { ascending: false })
-
-          if (allChores) {
-            console.log("Guest mode - loaded chores:", allChores.length);
-            setChores(allChores)
-          } else {
-            console.log("Guest mode - no chores returned from query");
-          }
-
-          setIsLoading(false)
-          return
-        }
-
-        // For authenticated users, proceed with normal flow
+        // Get current user session
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
-          router.push("/login")
-          return
-        }
+      router.push("/login")
+      return
+    }
 
         // Get current user profile
         const { data: profile } = await supabase
@@ -301,7 +269,7 @@ export default function ChoresPage() {
     return user ? user.username : "Unknown User";
   }
 
-  if (isLoading) {
+  if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
         <SumikkoHeader showBackButton />
@@ -312,24 +280,10 @@ export default function ChoresPage() {
     )
   }
 
-  if (!currentUser && !isGuest) {
-    return (
-      <div className="min-h-screen">
-        <SumikkoHeader showBackButton />
-        <div className="max-w-7xl mx-auto px-4">
-          <p>You must be logged in to view this page.</p>
-        </div>
-      </div>
-    )
-  }
-
   // Group chores by frequency
   const dailyChores = chores.filter((chore) => chore.frequency === "daily")
   const weeklyChores = chores.filter((chore) => chore.frequency === "weekly")
   const monthlyChores = chores.filter((chore) => chore.frequency === "monthly")
-  
-  // If there are no chores at all
-  const noChores = chores.length === 0;
 
   const ChoresList = ({ chores }: { chores: Chore[] }) => (
     <ul className="space-y-4">
@@ -382,61 +336,51 @@ export default function ChoresPage() {
       <SumikkoHeader showBackButton />
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
-        {isGuest && (
-          <div className="bg-muted p-4 rounded-lg mb-4">
-            <p className="text-center text-muted-foreground">
-              You are in guest mode. You can view chores but cannot edit or add new ones.
-            </p>
-          </div>
-        )}
-
-        {!isGuest && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Add New Chore</CardTitle>
-              <CardDescription>Create a new chore and set its frequency</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="choreName">Chore Name</Label>
-                  <Input
-                    id="choreName"
-                    value={newChoreName}
-                    onChange={(e) => setNewChoreName(e.target.value)}
-                    placeholder="Enter chore name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Frequency</Label>
-                  <Select
-                    value={newChoreFrequency}
-                    onValueChange={(value: "daily" | "weekly" | "monthly") => 
-                      setNewChoreFrequency(value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select frequency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button 
-                  className="w-full"
-                  onClick={handleAddChore}
-                  disabled={!newChoreName}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Chore
-                </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle>Add New Chore</CardTitle>
+            <CardDescription>Create a new chore and set its frequency</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="choreName">Chore Name</Label>
+                <Input
+                  id="choreName"
+                  value={newChoreName}
+                  onChange={(e) => setNewChoreName(e.target.value)}
+                  placeholder="Enter chore name"
+                />
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="space-y-2">
+                <Label>Frequency</Label>
+                <Select
+                  value={newChoreFrequency}
+                  onValueChange={(value: "daily" | "weekly" | "monthly") => 
+                    setNewChoreFrequency(value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                className="w-full"
+                onClick={handleAddChore}
+                disabled={!newChoreName}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Chore
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Daily Chores */}
         {dailyChores.length > 0 && (
@@ -454,9 +398,8 @@ export default function ChoresPage() {
                         <input
                           type="checkbox"
                           checked={chore.is_completed}
-                          onChange={() => !isGuest && handleToggleChore(chore.id, chore.is_completed || false)}
-                          className={`h-5 w-5 rounded border-gray-300 ${isGuest ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                          disabled={isGuest}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
                         />
                         <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
                           {chore.title}
@@ -469,33 +412,31 @@ export default function ChoresPage() {
                         )}
                       </div>
                     </div>
-                    {!isGuest && (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={chore.assigned_to || "unassigned"}
-                          onValueChange={(value) => handleAssignChore(chore.id, value)}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.username}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          onClick={() => handleDeleteChore(chore.id)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -519,9 +460,8 @@ export default function ChoresPage() {
                         <input
                           type="checkbox"
                           checked={chore.is_completed}
-                          onChange={() => !isGuest && handleToggleChore(chore.id, chore.is_completed || false)}
-                          className={`h-5 w-5 rounded border-gray-300 ${isGuest ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                          disabled={isGuest}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
                         />
                         <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
                           {chore.title}
@@ -534,33 +474,31 @@ export default function ChoresPage() {
                         )}
                       </div>
                     </div>
-                    {!isGuest && (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={chore.assigned_to || "unassigned"}
-                          onValueChange={(value) => handleAssignChore(chore.id, value)}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.username}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          onClick={() => handleDeleteChore(chore.id)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -584,9 +522,8 @@ export default function ChoresPage() {
                         <input
                           type="checkbox"
                           checked={chore.is_completed}
-                          onChange={() => !isGuest && handleToggleChore(chore.id, chore.is_completed || false)}
-                          className={`h-5 w-5 rounded border-gray-300 ${isGuest ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                          disabled={isGuest}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
                         />
                         <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
                           {chore.title}
@@ -599,47 +536,36 @@ export default function ChoresPage() {
                         )}
                       </div>
                     </div>
-                    {!isGuest && (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={chore.assigned_to || "unassigned"}
-                          onValueChange={(value) => handleAssignChore(chore.id, value)}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.username}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          onClick={() => handleDeleteChore(chore.id)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
           </CardContent>
         </Card>
-        )}
-
-        {/* No chores message */}
-        {noChores && (
-          <Card>
-            <CardContent className="py-6">
-              <p className="text-center text-muted-foreground">No chores created yet.</p>
-            </CardContent>
-          </Card>
         )}
       </div>
     </div>

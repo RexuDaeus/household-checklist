@@ -15,7 +15,7 @@ export default function AccountPage() {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [newUsername, setNewUsername] = useState("")
+  const [newName, setNewName] = useState("")
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -39,7 +39,7 @@ export default function AccountPage() {
 
         if (profile) {
           setCurrentUser(profile)
-          setNewUsername(profile.username)
+          setNewName(profile.username)
         }
       } catch (error) {
         console.error("Error loading data:", error)
@@ -51,8 +51,8 @@ export default function AccountPage() {
     loadData()
   }, [router])
 
-  const handleUpdateUsername = async () => {
-    if (!currentUser || !newUsername.trim() || newUsername === currentUser.username) return
+  const handleUpdateName = async () => {
+    if (!currentUser || !newName.trim() || newName === currentUser.username) return
 
     setIsSaving(true)
     setMessage(null)
@@ -60,16 +60,16 @@ export default function AccountPage() {
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ username: newUsername.trim() })
+        .update({ username: newName.trim() })
         .eq("id", currentUser.id)
 
       if (error) throw error
 
-      setMessage({ type: "success", text: "Username updated successfully!" })
-      setCurrentUser(prev => prev ? { ...prev, username: newUsername.trim() } : null)
+      setMessage({ type: "success", text: "Name updated successfully!" })
+      setCurrentUser(prev => prev ? { ...prev, username: newName.trim() } : null)
     } catch (error) {
-      console.error("Error updating username:", error)
-      setMessage({ type: "error", text: "Failed to update username. Please try again." })
+      console.error("Error updating name:", error)
+      setMessage({ type: "error", text: "Failed to update name. Please try again." })
     } finally {
       setIsSaving(false)
     }
@@ -150,14 +150,14 @@ export default function AccountPage() {
                 <Label htmlFor="name">New Name</Label>
                 <Input
                   id="name"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
                   placeholder="Enter new name"
                 />
               </div>
               <Button
-                onClick={handleUpdateUsername}
-                disabled={!newUsername.trim() || newUsername === currentUser.username || isSaving}
+                onClick={handleUpdateName}
+                disabled={!newName.trim() || newName === currentUser.username || isSaving}
               >
                 {isSaving ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</>
