@@ -299,7 +299,7 @@ export default function BillsPage() {
     return user ? user.username : "Unknown User";
   }
 
-  // Calculate total for a group of bills - using per person amount instead of full bill amount
+  // First, we need to ensure that the calculateGroupTotal function properly handles per-person amounts
   const calculateGroupTotal = (billsGroup: Bill[]): string => {
     const total = billsGroup.reduce((sum, bill) => {
       const perPersonAmount = parseFloat(getAmountPerPerson(bill.amount, bill.payers.length));
@@ -307,6 +307,8 @@ export default function BillsPage() {
     }, 0);
     return total.toFixed(2);
   };
+
+  
 
   if (isLoading || !currentUser) {
     return (
@@ -318,6 +320,23 @@ export default function BillsPage() {
       </div>
     )
   }
+
+  // Then we need a function to calculate the total across all payer groups
+  const calculateTotalAcrossGroups = (payerGroups: Record<string, Bill[]>): string => {
+    let total = 0;
+    
+    // Sum up the group total for each payer
+    Object.values(payerGroups).forEach(payerBills => {
+      total += parseFloat(calculateGroupTotal(payerBills));
+    });
+    
+    // Also add the bills where you're the only payer (if this is applicable to your use case)
+    const selfBills = myBillsAsPayee.filter(bill => 
+      bill.payers.length === 1 && bill.payers[0] === currentUser.id);
+    total += parseFloat(calculateGroupTotal(selfBills));
+    
+    return total.toFixed(2);
+  };
 
   // Group bills by payee instead of creator
   const billsByPayee = bills.reduce((acc, bill) => {
@@ -477,7 +496,7 @@ export default function BillsPage() {
             <h2 className="text-2xl font-bold mb-4">
               Money Owed to You 
               <span className="ml-2 text-lg font-semibold text-primary">
-                ${calculateGroupTotal(myBillsAsPayee)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
+                ${calculateTotalAcrossGroups(myBillsByPayer)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
