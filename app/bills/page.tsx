@@ -473,7 +473,7 @@ export default function BillsPage() {
           <div>
             <h2 className="text-2xl font-bold mb-4">
               Money Owed to You 
-              <span className="ml-2 text-lg font-semibold text-secondary">
+              <span className="ml-2 text-lg font-semibold text-primary">
                 ${calculateGroupTotal(myBillsAsPayee)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
               </span>
             </h2>
@@ -486,7 +486,7 @@ export default function BillsPage() {
                   <SumikkoCard
                     key={payerId}
                     title={`Owed by ${payerName} `}
-                    titleExtra={<span className="ml-1 text-base font-semibold text-secondary">${groupTotal} • {payerBills.length} bill{payerBills.length !== 1 ? 's' : ''}</span>}
+                    titleExtra={<span className="ml-1 text-base font-semibold text-primary">${groupTotal} • {payerBills.length} bill{payerBills.length !== 1 ? 's' : ''}</span>}
                   >
                     <ul className="space-y-4">
                       {payerBills.map((bill) => (
@@ -606,7 +606,7 @@ export default function BillsPage() {
                 <SumikkoCard
                   key="self-bills"
                   title="Bills with only you as payer "
-                  titleExtra={<span className="ml-1 text-base font-semibold text-secondary">${calculateGroupTotal(myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id))} • {myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length} bill{myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length !== 1 ? 's' : ''}</span>}
+                  titleExtra={<span className="ml-1 text-base font-semibold text-primary">${calculateGroupTotal(myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id))} • {myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length} bill{myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length !== 1 ? 's' : ''}</span>}
                 >
                   <ul className="space-y-4">
                     {myBillsAsPayee

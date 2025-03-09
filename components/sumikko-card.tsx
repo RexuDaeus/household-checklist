@@ -15,7 +15,7 @@ export function SumikkoCard({ children, className, title, subtitle, titleExtra }
       {(title || subtitle) && (
         <div className="mb-6">
           {title && (
-            <h2 className="sumikko-title flex items-center">
+            <h2 className="sumikko-title flex items-center text-white">
               {title}
               {titleExtra && titleExtra}
             </h2>
