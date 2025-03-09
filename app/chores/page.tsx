@@ -182,6 +182,14 @@ export default function ChoresPage() {
       // If userId is an empty string or "unassigned", convert it to null
       const assignedTo = userId === "" || userId === "unassigned" ? null : userId;
       
+      // Update UI optimistically
+      setChores(prevChores => prevChores.map(chore => 
+        chore.id === choreId ? { ...chore, assigned_to: assignedTo } : chore
+      ));
+      
+      console.log(`Optimistically assigned chore ${choreId} to user ${assignedTo || 'none'}`);
+      
+      // Then update in database
       const { error } = await supabase
         .from("chores")
         .update({ assigned_to: assignedTo })
@@ -189,11 +197,9 @@ export default function ChoresPage() {
 
       if (error) {
         console.error("Error assigning chore:", error);
-        alert("Failed to assign chore. The change will only be visible temporarily.");
-        // Update UI optimistically
-        setChores(prevChores => prevChores.map(chore => 
-          chore.id === choreId ? { ...chore, assigned_to: assignedTo } : chore
-        ));
+        alert("Failed to update assignment on the server. The change may not persist if you reload.");
+      } else {
+        console.log("Successfully assigned chore in database");
       }
     } catch (error) {
       console.error("Error assigning chore:", error);
@@ -202,14 +208,28 @@ export default function ChoresPage() {
 
   const handleDeleteChore = async (id: string) => {
     try {
+      // Update UI optimistically
+      setChores(prevChores => prevChores.filter(chore => chore.id !== id));
+      
+      console.log(`Optimistically deleted chore ${id}`);
+      
+      // Then delete from database
       const { error } = await supabase
         .from("chores")
         .delete()
-        .eq("id", id)
+        .eq("id", id);
 
-      if (error) throw error
+      if (error) {
+        console.error("Error deleting chore:", error);
+        alert("Failed to delete on the server. The item may reappear if you reload.");
+        
+        // If there was an error, we could fetch the chores again to restore the state
+        // But this would be jarring to the user, so we'll just alert them
+      } else {
+        console.log("Successfully deleted chore from database");
+      }
     } catch (error) {
-      console.error("Error deleting chore:", error)
+      console.error("Error deleting chore:", error);
     }
   }
 

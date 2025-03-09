@@ -189,14 +189,28 @@ export default function BillsPage() {
 
   const handleDeleteBill = async (id: string) => {
     try {
+      // Update UI optimistically
+      setBills(prevBills => prevBills.filter(bill => bill.id !== id));
+      
+      console.log(`Optimistically deleted bill ${id}`);
+      
+      // Then delete from database
       const { error } = await supabase
         .from("bills")
         .delete()
-        .eq("id", id)
+        .eq("id", id);
 
-      if (error) throw error
+      if (error) {
+        console.error("Error deleting bill:", error);
+        alert("Failed to delete on the server. The item may reappear if you reload.");
+        
+        // If there was an error, we could fetch the bills again to restore the state
+        // But this would be jarring to the user, so we'll just alert them
+      } else {
+        console.log("Successfully deleted bill from database");
+      }
     } catch (error) {
-      console.error("Error deleting bill:", error)
+      console.error("Error deleting bill:", error);
     }
   }
 
