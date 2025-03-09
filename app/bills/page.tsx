@@ -343,7 +343,7 @@ export default function BillsPage() {
     <div className="min-h-screen">
       <SumikkoHeader showBackButton />
       
-      <div className="max-w-7xl mx-auto px-4 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
         <SumikkoCard
           title="Add New Bill"
           subtitle="Create a new bill and select who needs to pay"
@@ -477,13 +477,17 @@ export default function BillsPage() {
 
         {/* Your Bills (where you are the payee) */}
         {myBillsAsPayee.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4 text-primary">Money Owed to You</h2>
-            <div className="bg-primary/5 p-4 rounded-lg border-2 border-primary">
+          <div className="bg-secondary/10 p-6 rounded-lg border border-secondary/30">
+            <h2 className="text-2xl font-bold mb-4">
+              Money Owed to You 
+              <span className="ml-2 text-base font-medium text-muted-foreground">
+                ${calculateGroupTotal(myBillsAsPayee)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
+              </span>
+            </h2>
+            <div className="grid grid-cols-1 gap-6">
               <SumikkoCard
                 key="my-bills-as-payee"
-                title="Bills Owed to You"
-                subtitle={`Total: $${calculateGroupTotal(myBillsAsPayee)} • ${myBillsAsPayee.length} bill${myBillsAsPayee.length !== 1 ? 's' : ''}`}
+                subtitle={`From ${myBillsAsPayee.length} different bill${myBillsAsPayee.length !== 1 ? 's' : ''}`}
               >
                 <ul className="space-y-4">
                   {myBillsAsPayee.map((bill) => (
@@ -617,8 +621,13 @@ export default function BillsPage() {
 
         {/* Other Bills (where others are the payee) */}
         {Object.keys(otherBillsByPayee).length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">Money You Owe to Others</h2>
+          <div className="bg-primary/5 p-6 rounded-lg border border-primary/20">
+            <h2 className="text-2xl font-bold mb-4">
+              Money You Owe to Others
+              <span className="ml-2 text-base font-medium text-muted-foreground">
+                ${Object.values(otherBillsByPayee).reduce((total, bills) => total + parseFloat(calculateGroupTotal(bills)), 0).toFixed(2)} • {Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0)} bill{Object.values(otherBillsByPayee).reduce((total, bills) => total + bills.length, 0) !== 1 ? 's' : ''}
+              </span>
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {Object.entries(otherBillsByPayee).map(([payee, payeeBills]) => {
                 // Find the user name if payee is a user ID
@@ -636,8 +645,8 @@ export default function BillsPage() {
                 return (
                   <SumikkoCard
                     key={payee}
-                    title={`Bills Owed to ${payeeDisplayName}`}
-                    subtitle={`Total: $${groupTotal} • ${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
+                    title={`Owed to ${payeeDisplayName}`}
+                    subtitle={`$${groupTotal} total • ${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
                   >
                     <ul className="space-y-4">
                       {payeeBills.map((bill) => (
