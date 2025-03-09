@@ -47,21 +47,45 @@ export default function ArchivedBillsPage() {
             setAllUsers(fetchedUsers)
           }
 
+          // First, check if the archived_bills table exists
+          const { error: tableError } = await supabase
+            .from('archived_bills')
+            .select('count')
+            .limit(1)
+            .single();
+
+          // If the table doesn't exist or there's an error, we need to create it
+          if (tableError) {
+            console.error("Error checking archived_bills table:", tableError);
+            alert("The archived_bills table may not exist. Please run the SQL script to create it.");
+            setIsLoading(false);
+            return;
+          }
+
           // Get archived bills where user is creator or was a payer
-          const { data: archivedBillsData } = await supabase
+          const { data: archivedBillsData, error: queryError } = await supabase
             .from("archived_bills")
             .select("*")
-            .or(`bill_data->>'created_by'.eq.${session.user.id},payer_id.eq.${session.user.id}`)
-            .order("archived_at", { ascending: false })
+            .or(`payer_id.eq.${session.user.id},bill_data->>'created_by'.eq.${session.user.id}`)
+            .order("archived_at", { ascending: false });
 
-          if (archivedBillsData) {
+          if (queryError) {
+            console.error("Error fetching archived bills:", queryError);
+            alert("Failed to load archived bills.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (archivedBillsData && archivedBillsData.length > 0) {
             // Extract the bill_data from each archived bill record and add the record id
             const bills = archivedBillsData.map(record => ({
               ...record.bill_data as Bill,
               archived_record_id: record.id,
               payer_id: record.payer_id
-            }))
-            setArchivedBills(bills)
+            }));
+            setArchivedBills(bills);
+          } else {
+            console.log("No archived bills found");
           }
         }
       } catch (error) {
