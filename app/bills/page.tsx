@@ -42,14 +42,14 @@ export default function BillsPage() {
         if (profile) {
           setCurrentUser(profile)
 
-          // Get all other users
+          // Get all users (including current user for bills)
           const { data: allUsers } = await supabase
             .from("profiles")
             .select("*")
-            .neq("id", session.user.id)
 
           if (allUsers) {
-            setUsers(allUsers)
+            // Filter out the current user for the UI list
+            setUsers(allUsers.filter(user => user.id !== session.user.id))
           }
 
           // Get all bills where user is creator or payer
@@ -106,15 +106,12 @@ export default function BillsPage() {
     if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
 
     try {
-      // Include bill creator in payers array
-      const allPayers = [...selectedPayers, currentUser.id]
-      
       const { data: bill, error } = await supabase
         .from("bills")
         .insert([{
           title: newBillName,
           amount: parseFloat(newBillAmount),
-          payers: allPayers,
+          payers: selectedPayers,
           created_by: currentUser.id,
           due_date: new Date().toISOString()
         }])
@@ -180,16 +177,10 @@ export default function BillsPage() {
   // Calculate totals for each creator
   const creatorTotals = Object.entries(billsByCreator).reduce((acc, [creator, bills]) => {
     acc[creator] = bills.reduce((sum, bill) => {
-      if (bill.created_by !== currentUser.id) {
-        // If current user is not the creator, only add their share
-        if (bill.payers.includes(currentUser.id)) {
-          return sum + (bill.amount / bill.payers.length)
-        }
-        return sum
-      } else {
-        // For bills created by currentUser, add the total amount
-        return sum + bill.amount
+      if (bill.payers.includes(currentUser.id) && bill.created_by !== currentUser.id) {
+        return sum + (bill.amount / bill.payers.length)
       }
+      return sum + bill.amount
     }, 0)
     return acc
   }, {} as Record<string, number>)
@@ -226,19 +217,33 @@ export default function BillsPage() {
                 onChange={(e) => setNewBillAmount(e.target.value)}
                 placeholder="Enter total amount"
               />
-              {newBillAmount && selectedPayers.length > 0 && (
+              {newBillAmount && selectedPayers.length >= 0 && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length + 1)} each
-                  (split between {selectedPayers.length + 1} people including you)
+                  ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length)} each
+                  (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
                 </p>
               )}
             </div>
             <div className="space-y-2">
               <Label>Select Payers</Label>
               <p className="text-sm text-muted-foreground mb-2">
-                Select who needs to pay this bill (you will be automatically included)
+                Select who needs to pay this bill (including yourself if applicable)
               </p>
               <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`payer-${currentUser.id}`}
+                    checked={selectedPayers.includes(currentUser.id)}
+                    onCheckedChange={() => togglePayer(currentUser.id)}
+                    className="sumikko-checkbox"
+                  />
+                  <Label 
+                    htmlFor={`payer-${currentUser.id}`}
+                    className="text-sm font-medium"
+                  >
+                    {currentUser.username} (You)
+                  </Label>
+                </div>
                 {users.map((user) => (
                   <div key={user.id} className="flex items-center space-x-2">
                     <Checkbox
@@ -293,7 +298,7 @@ export default function BillsPage() {
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {creatorId === currentUser.id ? (
-                          <>To be paid by: You and {bill.payers.filter(id => id !== currentUser.id).map(id => 
+                          <>To be paid by: {bill.payers.map(id => 
                             users.find(u => u.id === id)?.username
                           ).join(", ")}</>
                         ) : (
