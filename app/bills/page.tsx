@@ -319,16 +319,37 @@ export default function BillsPage() {
     )
   }
 
-  const getAmountPerPerson = (amount: number, payersCount: number) => {
-    if (payersCount === 0) return "0.00"
-    return (amount / payersCount).toFixed(2)
-  }
+  const getAmountPerPerson = (bill: Bill): string => {
+    if (bill.payers.length === 0) return "0.00";
+    return (bill.amount / bill.payers.length).toFixed(2);
+  };
+
+  const getEstimatedAmountPerPerson = (amount: string, payersCount: number): string => {
+    if (!amount || payersCount === 0) return "0.00";
+    return (parseFloat(amount) / payersCount).toFixed(2);
+  };
 
   const getUsernameById = (userId: string): string => {
-    if (userId === currentUser?.id) return `${currentUser.username} (You)`;
+    if (isGuest) {
+      const user = allUsers.find(u => u.id === userId);
+      return user ? user.username : "Unknown User";
+    }
+    
+    if (currentUser && userId === currentUser.id) return `${currentUser.username} (You)`;
     const user = allUsers.find(u => u.id === userId);
     return user ? user.username : "Unknown User";
-  }
+  };
+
+  const getYourShare = (bill: Bill): string => {
+    if (isGuest) {
+      return getAmountPerPerson(bill);
+    }
+    
+    if (currentUser && bill.payers.includes(currentUser.id)) {
+      return getAmountPerPerson(bill);
+    }
+    return "0.00";
+  };
 
   // Calculate total for a group of bills
   const calculateGroupTotal = (billsGroup: Bill[]): string => {
@@ -336,12 +357,23 @@ export default function BillsPage() {
     return total.toFixed(2);
   }
 
-  if (isLoading || !currentUser) {
+  if (isLoading) {
     return (
       <div className="min-h-screen">
         <SumikkoHeader showBackButton />
         <div className="max-w-7xl mx-auto px-4">
           <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser && !isGuest) {
+    return (
+      <div className="min-h-screen">
+        <SumikkoHeader showBackButton />
+        <div className="max-w-7xl mx-auto px-4">
+          <p>You must be logged in to view this page.</p>
         </div>
       </div>
     )
@@ -381,7 +413,7 @@ export default function BillsPage() {
 
   // Calculate per person total for a bill
   const getPerPersonTotal = (bill: Bill): string => {
-    return getAmountPerPerson(bill.amount, bill.payers.length);
+    return getAmountPerPerson(bill);
   };
 
   return (
@@ -429,7 +461,7 @@ export default function BillsPage() {
                   />
                   {newBillAmount && selectedPayers.length >= 0 && (
                     <p className="text-sm text-muted-foreground mt-2">
-                      ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length)} each
+                      ${getAmountPerPerson(bill)} each
                       (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
                     </p>
                   )}
@@ -608,7 +640,7 @@ export default function BillsPage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-base">${getAmountPerPerson(bill)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
@@ -874,7 +906,7 @@ export default function BillsPage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-base">${getAmountPerPerson(bill)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">

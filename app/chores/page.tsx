@@ -298,12 +298,23 @@ export default function ChoresPage() {
     return user ? user.username : "Unknown User";
   }
 
-  if (isLoading || !currentUser) {
+  if (isLoading) {
     return (
       <div className="min-h-screen">
         <SumikkoHeader showBackButton />
         <div className="max-w-7xl mx-auto px-4">
           <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser && !isGuest) {
+    return (
+      <div className="min-h-screen">
+        <SumikkoHeader showBackButton />
+        <div className="max-w-7xl mx-auto px-4">
+          <p>You must be logged in to view this page.</p>
         </div>
       </div>
     )

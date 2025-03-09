@@ -118,7 +118,7 @@ export default function CommunityPage() {
   }
 
   const handleUpload = async () => {
-    if (!file || !caption || !currentUser) return
+    if (!file || !caption || !currentUser || isGuest) return
 
     setIsUploading(true)
 
@@ -230,7 +230,7 @@ export default function CommunityPage() {
                   type="file"
                   accept="image/*"
                   onChange={handleFileChange}
-                  disabled={isUploading}
+                  disabled={isUploading || isGuest}
                 />
               </div>
               <div className="space-y-2">
@@ -240,13 +240,13 @@ export default function CommunityPage() {
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   placeholder="Write a caption..."
-                  disabled={isUploading}
+                  disabled={isUploading || isGuest}
                 />
               </div>
               <Button
                 className="w-full"
                 onClick={handleUpload}
-                disabled={!file || !caption || isUploading}
+                disabled={!file || !caption || isUploading || isGuest}
               >
                 <Upload className="h-4 w-4 mr-2" />
                 {isUploading ? "Uploading..." : "Share Photo"}
