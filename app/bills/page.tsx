@@ -299,11 +299,14 @@ export default function BillsPage() {
     return user ? user.username : "Unknown User";
   }
 
-  // Calculate total for a group of bills
+  // Calculate total for a group of bills - using per person amount instead of full bill amount
   const calculateGroupTotal = (billsGroup: Bill[]): string => {
-    const total = billsGroup.reduce((sum, bill) => sum + bill.amount, 0);
+    const total = billsGroup.reduce((sum, bill) => {
+      const perPersonAmount = parseFloat(getAmountPerPerson(bill.amount, bill.payers.length));
+      return sum + perPersonAmount;
+    }, 0);
     return total.toFixed(2);
-  }
+  };
 
   if (isLoading || !currentUser) {
     return (
