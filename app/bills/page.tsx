@@ -7,7 +7,6 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { SumikkoCard } from "@/components/sumikko-card"
 import { supabase } from "@/lib/supabase"
@@ -289,6 +288,10 @@ export default function BillsPage() {
     )
   }
 
+  const togglePayee = (payeeId: string) => {
+    setNewBillPayee(prev => prev === payeeId ? "" : payeeId);
+  }
+
   const getAmountPerPerson = (amount: number, payersCount: number) => {
     if (payersCount === 0) return "0.00"
     return (amount / payersCount).toFixed(2)
@@ -298,6 +301,12 @@ export default function BillsPage() {
     if (userId === currentUser?.id) return `${currentUser.username} (You)`;
     const user = allUsers.find(u => u.id === userId);
     return user ? user.username : "Unknown User";
+  }
+
+  // Calculate total for a group of bills
+  const calculateGroupTotal = (billsGroup: Bill[]): string => {
+    const total = billsGroup.reduce((sum, bill) => sum + bill.amount, 0);
+    return total.toFixed(2);
   }
 
   if (isLoading || !currentUser) {
@@ -342,22 +351,42 @@ export default function BillsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billPayee">Select Payee</Label>
-              <Select 
-                value={newBillPayee} 
-                onValueChange={setNewBillPayee}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select who the bill is paid to..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {allUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.username} {user.id === currentUser.id ? "(You)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Select Payee</Label>
+              <p className="text-sm text-muted-foreground mb-2">
+                Select who the bill is paid to (only one selection allowed)
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`payee-${currentUser.id}`}
+                    checked={newBillPayee === currentUser.id}
+                    onCheckedChange={() => togglePayee(currentUser.id)}
+                    className="sumikko-checkbox"
+                  />
+                  <Label 
+                    htmlFor={`payee-${currentUser.id}`}
+                    className="text-sm font-medium"
+                  >
+                    {currentUser.username} (You)
+                  </Label>
+                </div>
+                {users.map((user) => (
+                  <div key={user.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`payee-${user.id}`}
+                      checked={newBillPayee === user.id}
+                      onCheckedChange={() => togglePayee(user.id)}
+                      className="sumikko-checkbox"
+                    />
+                    <Label 
+                      htmlFor={`payee-${user.id}`}
+                      className="text-sm font-medium"
+                    >
+                      {user.username}
+                    </Label>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Total Amount ($)</Label>
@@ -450,11 +479,14 @@ export default function BillsPage() {
             }
           }
           
+          // Calculate the total for this group of bills
+          const groupTotal = calculateGroupTotal(payeeBills);
+          
           return (
             <SumikkoCard
               key={payee}
               title={`Bills for ${payeeDisplayName}`}
-              subtitle={`${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
+              subtitle={`Total: $${groupTotal} • ${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
             >
               <ul className="space-y-4">
                 {payeeBills.map((bill) => (
@@ -468,21 +500,47 @@ export default function BillsPage() {
                           placeholder="Bill title"
                           className="w-full"
                         />
-                        <Select 
-                          value={editFormData.payee} 
-                          onValueChange={(value) => setEditFormData({ ...editFormData, payee: value })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select payee" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {allUsers.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.username} {user.id === currentUser.id ? "(You)" : ""}
-                              </SelectItem>
+                        <div className="space-y-2">
+                          <Label>Select Payee (Edit)</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`edit-payee-${currentUser.id}`}
+                                checked={editFormData.payee === currentUser.id}
+                                onCheckedChange={() => setEditFormData({
+                                  ...editFormData,
+                                  payee: editFormData.payee === currentUser.id ? "" : currentUser.id
+                                })}
+                                className="sumikko-checkbox"
+                              />
+                              <Label 
+                                htmlFor={`edit-payee-${currentUser.id}`}
+                                className="text-sm font-medium"
+                              >
+                                {currentUser.username} (You)
+                              </Label>
+                            </div>
+                            {users.map((user) => (
+                              <div key={user.id} className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`edit-payee-${user.id}`}
+                                  checked={editFormData.payee === user.id}
+                                  onCheckedChange={() => setEditFormData({
+                                    ...editFormData,
+                                    payee: editFormData.payee === user.id ? "" : user.id
+                                  })}
+                                  className="sumikko-checkbox"
+                                />
+                                <Label 
+                                  htmlFor={`edit-payee-${user.id}`}
+                                  className="text-sm font-medium"
+                                >
+                                  {user.username}
+                                </Label>
+                              </div>
                             ))}
-                          </SelectContent>
-                        </Select>
+                          </div>
+                        </div>
                         <Input
                           type="number"
                           step="0.01"
@@ -517,9 +575,12 @@ export default function BillsPage() {
                       // View mode
                       <div className="flex items-center justify-between gap-4 w-full">
                         <div className="flex-grow">
-                          <div className="font-medium">{bill.title}</div>
+                          <div className="font-medium flex items-baseline">
+                            <span>{bill.title}</span>
+                            <span className="ml-2 text-sm text-muted-foreground">${bill.amount.toFixed(2)}</span>
+                          </div>
                           <div className="text-sm text-muted-foreground">
-                            Amount: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each
+                            Per person: ${getAmountPerPerson(bill.amount, bill.payers.length)}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             Received on: {format(new Date(bill.due_date), "PPP")}
