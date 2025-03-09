@@ -46,7 +46,10 @@ export default function ChoresPage() {
             .order("created_at", { ascending: false })
 
           if (allChores) {
+            console.log("Guest mode - loaded chores:", allChores.length);
             setChores(allChores)
+          } else {
+            console.log("Guest mode - no chores returned from query");
           }
 
           setIsLoading(false)
@@ -324,6 +327,9 @@ export default function ChoresPage() {
   const dailyChores = chores.filter((chore) => chore.frequency === "daily")
   const weeklyChores = chores.filter((chore) => chore.frequency === "weekly")
   const monthlyChores = chores.filter((chore) => chore.frequency === "monthly")
+  
+  // If there are no chores at all
+  const noChores = chores.length === 0;
 
   const ChoresList = ({ chores }: { chores: Chore[] }) => (
     <ul className="space-y-4">
@@ -628,7 +634,7 @@ export default function ChoresPage() {
         )}
 
         {/* No chores message */}
-        {dailyChores.length === 0 && weeklyChores.length === 0 && monthlyChores.length === 0 && (
+        {noChores && (
           <Card>
             <CardContent className="py-6">
               <p className="text-center text-muted-foreground">No chores created yet.</p>
