@@ -485,8 +485,8 @@ export default function BillsPage() {
                 return (
                   <SumikkoCard
                     key={payerId}
-                    title={`Owed by ${payerName}`}
-                    subtitle={`$${groupTotal} total • ${payerBills.length} bill${payerBills.length !== 1 ? 's' : ''}`}
+                    title={`Owed by ${payerName} `}
+                    titleExtra={<span className="ml-1 text-base font-semibold text-secondary">${groupTotal} • {payerBills.length} bill{payerBills.length !== 1 ? 's' : ''}</span>}
                   >
                     <ul className="space-y-4">
                       {payerBills.map((bill) => (
@@ -553,7 +553,10 @@ export default function BillsPage() {
                               <div className="flex-grow">
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
-                                  <span className="ml-2 text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                  <div>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                  </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
@@ -602,8 +605,8 @@ export default function BillsPage() {
                 bill.payers.length === 1 && bill.payers[0] === currentUser.id).length > 0 && (
                 <SumikkoCard
                   key="self-bills"
-                  title="Bills with only you as payer"
-                  subtitle="These bills don't have any other payers"
+                  title="Bills with only you as payer "
+                  titleExtra={<span className="ml-1 text-base font-semibold text-secondary">${calculateGroupTotal(myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id))} • {myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length} bill{myBillsAsPayee.filter(bill => bill.payers.length === 1 && bill.payers[0] === currentUser.id).length !== 1 ? 's' : ''}</span>}
                 >
                   <ul className="space-y-4">
                     {myBillsAsPayee
@@ -672,7 +675,10 @@ export default function BillsPage() {
                               <div className="flex-grow">
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
-                                  <span className="ml-2 text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                  <div>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                  </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
@@ -745,8 +751,8 @@ export default function BillsPage() {
                 return (
                   <SumikkoCard
                     key={payee}
-                    title={`Owed to ${payeeDisplayName}`}
-                    subtitle={`$${perPersonTotal} your share • ${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
+                    title={`Owed to ${payeeDisplayName} `}
+                    titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {payeeBills.length} bill{payeeBills.length !== 1 ? 's' : ''}</span>}
                   >
                     <ul className="space-y-4">
                       {payeeBills.map((bill) => (
@@ -813,8 +819,9 @@ export default function BillsPage() {
                               <div className="flex-grow">
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
-                                  <div className="text-base font-semibold mt-1 text-primary-foreground">
-                                    Your share: <span className="text-lg">${getPerPersonTotal(bill)}</span>
+                                  <div>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
@@ -822,8 +829,8 @@ export default function BillsPage() {
                                     Date: {format(new Date(bill.due_date), "PPP")}
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground">Total: </span>
-                                    <span className="text-base">${bill.amount.toFixed(2)}</span>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
