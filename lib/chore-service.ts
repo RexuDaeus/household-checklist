@@ -1,18 +1,9 @@
 "use client"
 
-type Chore = {
-  id: string;
-  name?: string;
-  title?: string;
-  frequency: 'daily' | 'weekly' | 'monthly';
-  completed: boolean;
-  completedBy?: string;
-  lastReset?: string;
-  assigned_to?: string;
-  created_at?: string;
-};
+import { supabase } from "@/lib/supabase"
+import type { Chore } from "@/lib/supabase"
 
-export function checkAndResetChores(): void {
+export async function checkAndResetChores(): Promise<void> {
   try {
     // Get the current time in Sydney timezone (GMT+11)
     const now = new Date();
@@ -27,78 +18,69 @@ export function checkAndResetChores(): void {
     const sydneyWeekDay = sydneyTime.getDay(); // 0 = Sunday, 1 = Monday
     
     // Only process resets if it's around 4 AM (between 3:30 AM and 4:30 AM)
-    // This gives some buffer in case the user isn't active exactly at 4 AM
     if (sydneyHour < 3 || sydneyHour > 4) {
       return;
     }
-    
-    // Get chores from localStorage
-    const savedChores = localStorage.getItem("chores");
-    if (!savedChores) {
+
+    // Get all completed chores
+    const { data: chores, error: fetchError } = await supabase
+      .from("chores")
+      .select("*")
+      .eq("is_completed", true);
+
+    if (fetchError) {
+      console.error("Error fetching chores:", fetchError);
       return;
     }
-    
-    let chores: Chore[] = JSON.parse(savedChores);
-    let hasChanges = false;
-    
-    // Process chores
-    chores = chores.map(chore => {
+
+    if (!chores || chores.length === 0) {
+      return;
+    }
+
+    // Process each chore
+    for (const chore of chores) {
       const lastReset = chore.lastReset ? new Date(chore.lastReset) : null;
       const lastResetDate = lastReset ? lastReset.getDate() : 0;
       const lastResetMonth = lastReset ? lastReset.getMonth() : -1;
-      
+      let shouldReset = false;
+
       // Daily chores: reset every day at 4 AM
-      if (chore.frequency === "daily" && chore.completed) {
-        // If the last reset date is different from today, or
-        // if there was no last reset, reset the chore
+      if (chore.frequency === "daily") {
         if (!lastReset || lastResetDate !== sydneyDay) {
-          hasChanges = true;
-          return {
-            ...chore,
-            completed: false,
-            completedBy: undefined,
-            lastReset: sydneyTime.toISOString()
-          };
+          shouldReset = true;
         }
       }
       
       // Weekly chores: reset every Monday at 4 AM
-      if (chore.frequency === "weekly" && chore.completed) {
-        if (sydneyWeekDay === 1) { // Monday
-          if (!lastReset || daysSince(lastReset, now) >= 7) {
-            hasChanges = true;
-            return {
-              ...chore,
-              completed: false,
-              completedBy: undefined,
-              lastReset: sydneyTime.toISOString()
-            };
-          }
+      else if (chore.frequency === "weekly" && sydneyWeekDay === 1) { // Monday
+        if (!lastReset || daysSince(lastReset, now) >= 7) {
+          shouldReset = true;
         }
       }
       
       // Monthly chores: reset on the 1st of each month at 4 AM
-      if (chore.frequency === "monthly" && chore.completed) {
-        if (sydneyDay === 1) { // 1st of the month
-          if (!lastReset || monthsSince(lastReset, sydneyTime) >= 1) {
-            hasChanges = true;
-            return {
-              ...chore,
-              completed: false,
-              completedBy: undefined,
-              lastReset: sydneyTime.toISOString()
-            };
-          }
+      else if (chore.frequency === "monthly" && sydneyDay === 1) {
+        if (!lastReset || monthsSince(lastReset, sydneyTime) >= 1) {
+          shouldReset = true;
         }
       }
-      
-      return chore;
-    });
-    
-    // Save the updated chores back to localStorage if any changes were made
-    if (hasChanges) {
-      localStorage.setItem("chores", JSON.stringify(chores));
-      console.log("Chores have been automatically reset based on frequency");
+
+      // Reset the chore if needed
+      if (shouldReset) {
+        const { error: updateError } = await supabase
+          .from("chores")
+          .update({
+            is_completed: false,
+            lastReset: sydneyTime.toISOString()
+          })
+          .eq("id", chore.id);
+
+        if (updateError) {
+          console.error(`Error resetting chore ${chore.id}:`, updateError);
+        } else {
+          console.log(`Successfully reset chore: ${chore.title}`);
+        }
+      }
     }
   } catch (error) {
     console.error("Error in checkAndResetChores:", error);

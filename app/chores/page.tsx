@@ -233,6 +233,42 @@ export default function ChoresPage() {
     }
   }
 
+  const handleToggleChore = async (choreId: string, currentStatus: boolean) => {
+    try {
+      // Update UI optimistically
+      setChores(prevChores => prevChores.map(chore => 
+        chore.id === choreId ? { ...chore, is_completed: !currentStatus } : chore
+      ));
+      
+      console.log(`Optimistically toggled chore ${choreId} completion to ${!currentStatus}`);
+      
+      // Then update in database
+      const { error } = await supabase
+        .from("chores")
+        .update({ 
+          is_completed: !currentStatus,
+          lastReset: currentStatus ? null : new Date().toISOString() // Update lastReset when completing
+        })
+        .eq("id", choreId);
+
+      if (error) {
+        console.error("Error toggling chore:", error);
+        alert("Failed to update completion on the server. The change may not persist if you reload.");
+      } else {
+        console.log("Successfully toggled chore in database");
+      }
+    } catch (error) {
+      console.error("Error toggling chore:", error);
+    }
+  }
+
+  const getUsernameById = (userId: string | null | undefined): string => {
+    if (!userId) return "Unassigned";
+    if (userId === currentUser?.id) return `${currentUser.username} (You)`;
+    const user = users.find(u => u.id === userId);
+    return user ? user.username : "Unknown User";
+  }
+
   if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
@@ -299,68 +335,238 @@ export default function ChoresPage() {
     <div className="min-h-screen">
       <SumikkoHeader showBackButton />
       
-      <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
         <Card>
           <CardHeader>
             <CardTitle>Add New Chore</CardTitle>
-            <CardDescription>Create a new chore for the household.</CardDescription>
+            <CardDescription>Create a new chore and set its frequency</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="choreName">Chore Name</Label>
-              <Input
-                id="choreName"
-                value={newChoreName}
-                onChange={(e) => setNewChoreName(e.target.value)}
-                placeholder="Enter chore name"
-              />
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="choreName">Chore Name</Label>
+                <Input
+                  id="choreName"
+                  value={newChoreName}
+                  onChange={(e) => setNewChoreName(e.target.value)}
+                  placeholder="Enter chore name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Frequency</Label>
+                <Select
+                  value={newChoreFrequency}
+                  onValueChange={(value: "daily" | "weekly" | "monthly") => 
+                    setNewChoreFrequency(value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                className="w-full"
+                onClick={handleAddChore}
+                disabled={!newChoreName}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Chore
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="frequency">Frequency</Label>
-              <Select value={newChoreFrequency} onValueChange={(value: "daily" | "weekly" | "monthly") => setNewChoreFrequency(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full" onClick={handleAddChore}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Chore
-            </Button>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Chores</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChoresList chores={dailyChores} />
-          </CardContent>
-        </Card>
+        {/* Daily Chores */}
+        {dailyChores.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Daily Chores</CardTitle>
+              <CardDescription>Reset automatically at 4 AM Sydney time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-4">
+                {dailyChores.map((chore) => (
+                  <li key={chore.id} className="flex items-center justify-between gap-4">
+                    <div className="flex-grow">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={chore.is_completed}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
+                        />
+                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                          {chore.title}
+                        </span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <span>Created by: {getUsernameById(chore.created_by)}</span>
+                        {chore.assigned_to && (
+                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Weekly Chores</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChoresList chores={weeklyChores} />
-          </CardContent>
-        </Card>
+        {/* Weekly Chores */}
+        {weeklyChores.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Weekly Chores</CardTitle>
+              <CardDescription>Reset automatically every Monday at 4 AM Sydney time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-4">
+                {weeklyChores.map((chore) => (
+                  <li key={chore.id} className="flex items-center justify-between gap-4">
+                    <div className="flex-grow">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={chore.is_completed}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
+                        />
+                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                          {chore.title}
+                        </span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <span>Created by: {getUsernameById(chore.created_by)}</span>
+                        {chore.assigned_to && (
+                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Chores</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChoresList chores={monthlyChores} />
-          </CardContent>
-        </Card>
+        {/* Monthly Chores */}
+        {monthlyChores.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Chores</CardTitle>
+              <CardDescription>Reset automatically on the 1st of each month at 4 AM Sydney time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-4">
+                {monthlyChores.map((chore) => (
+                  <li key={chore.id} className="flex items-center justify-between gap-4">
+                    <div className="flex-grow">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={chore.is_completed}
+                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+                          className="h-5 w-5 rounded border-gray-300"
+                        />
+                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                          {chore.title}
+                        </span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <span>Created by: {getUsernameById(chore.created_by)}</span>
+                        {chore.assigned_to && (
+                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={chore.assigned_to || "unassigned"}
+                        onValueChange={(value) => handleAssignChore(chore.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteChore(chore.id)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
