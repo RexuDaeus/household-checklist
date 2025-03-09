@@ -94,7 +94,10 @@ export function SumikkoHeader({
           <div className="flex items-center gap-4">
             {username && !hideAuth && (
               <>
-                <div className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full">
+                <button
+                  onClick={() => router.push("/account")}
+                  className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
+                >
                   <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                     <span className="text-sm font-medium text-primary">
                       {username.charAt(0).toUpperCase()}
@@ -103,7 +106,7 @@ export function SumikkoHeader({
                   <span className="text-sm font-medium">
                     Welcome, {username}
                   </span>
-                </div>
+                </button>
                 {showBackButton && (
                   <Button
                     className={buttonVariants({ variant: "secondary", className: "sumikko-button" })}
