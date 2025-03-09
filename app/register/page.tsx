@@ -139,7 +139,7 @@ export default function RegisterPage() {
         <Card className="w-full max-w-md shadow-lg">
           <CardHeader>
             <CardTitle>Create Account</CardTitle>
-            <CardDescription>Register to manage household chores</CardDescription>
+            <CardDescription>Register to access Sumikko House</CardDescription>
           </CardHeader>
           <form onSubmit={handleRegister}>
             <CardContent className="space-y-4">

@@ -80,7 +80,7 @@ export default function LoginPage() {
         <Card className="w-full max-w-md shadow-lg">
           <CardHeader>
             <CardTitle>Login</CardTitle>
-            <CardDescription>Enter your credentials to access your household chores</CardDescription>
+            <CardDescription>Enter your credentials to access Sumikko House</CardDescription>
           </CardHeader>
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
