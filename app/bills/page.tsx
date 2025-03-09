@@ -30,11 +30,13 @@ export default function BillsPage() {
     amount: string;
     payee: string;
     due_date: string;
+    payers: string[];
   }>({
     title: "",
     amount: "",
     payee: "",
-    due_date: ""
+    due_date: "",
+    payers: []
   })
   const router = useRouter()
   const [archivedBills, setArchivedBills] = useState<Bill[]>([])
@@ -210,46 +212,109 @@ export default function BillsPage() {
     if (!billToDelete || billToDelete.created_by !== currentUser?.id) return;
   
     // Confirm deletion with the user
-    if (!window.confirm(`Are you sure you want to delete "${billToDelete.title}"?`)) {
+    if (!window.confirm(`Are you sure you want to remove "${billToDelete.title}" for ${getUsernameById(payerId || '')}`)) {
       return; // User canceled the deletion
     }
 
     try {
-      // We're specifically deleting the entire bill now, not just removing a payer
-      // regardless of whether payerId is provided
-      
-      // Update UI optimistically
-      setBills(prevBills => prevBills.filter(b => b.id !== id));
-      
-      console.log(`Optimistically deleted bill ${id}`);
-      
-      // Delete from database
-      const { error } = await supabase
-        .from("bills")
-        .delete()
-        .eq("id", id);
-  
-      if (error) {
-        console.error("Error deleting bill:", error);
-        alert("Failed to delete bill on the server. The bill may reappear if you reload.");
+      // If payerId is specified, we're just removing that specific payer
+      if (payerId) {
+        // Get updated payers array without the specified payer
+        const updatedPayers = billToDelete.payers.filter(p => p !== payerId);
         
-        // Revert the UI update if there was an error
-        const { data } = await supabase
-          .from("bills")
-          .select("*")
-          .eq("id", id);
-          
-        if (data && data.length > 0) {
-          setBills(prevBills => [...prevBills, data[0]]);
+        // Update UI optimistically
+        setBills(prevBills => prevBills.map(bill => 
+          bill.id === id ? { ...bill, payers: updatedPayers } : bill
+        ));
+        
+        console.log(`Optimistically removed payer ${payerId} from bill ${id}`);
+        
+        if (updatedPayers.length === 0) {
+          // If no payers left, delete the bill
+          const { error: deleteError } = await supabase
+            .from("bills")
+            .delete()
+            .eq("id", id);
+
+          if (deleteError) {
+            console.error("Error deleting bill:", deleteError);
+            alert("Failed to delete bill on the server.");
+            
+            // Revert UI update on error
+            const { data } = await supabase
+              .from("bills")
+              .select("*")
+              .eq("id", id);
+              
+            if (data && data.length > 0) {
+              setBills(prevBills => [...prevBills, data[0]]);
+            }
+            return;
+          }
+        } else {
+          // Update the original bill's payers list
+          const { error: updateError } = await supabase
+            .from("bills")
+            .update({ payers: updatedPayers })
+            .eq("id", id);
+
+          if (updateError) {
+            console.error("Error updating bill:", updateError);
+            alert("Failed to update bill on the server.");
+            
+            // Revert UI update on error
+            const { data } = await supabase
+              .from("bills")
+              .select("*")
+              .eq("id", id);
+              
+            if (data && data.length > 0) {
+              setBills(prevBills => prevBills.map(bill => 
+                bill.id === id ? data[0] : bill
+              ));
+            }
+            return;
+          }
         }
       } else {
-        console.log("Successfully deleted bill");
+        // No payerId specified, delete the entire bill
+        if (!window.confirm("Are you sure you want to delete this bill for ALL users?")) {
+          return; // User canceled the deletion
+        }
+        
+        // Update UI optimistically
+        setBills(prevBills => prevBills.filter(b => b.id !== id));
+        
+        console.log(`Optimistically deleted bill ${id}`);
+        
+        // Delete from database
+        const { error } = await supabase
+          .from("bills")
+          .delete()
+          .eq("id", id);
+
+        if (error) {
+          console.error("Error deleting bill:", error);
+          alert("Failed to delete bill on the server. The bill may reappear if you reload.");
+          
+          // Revert the UI update if there was an error
+          const { data } = await supabase
+            .from("bills")
+            .select("*")
+            .eq("id", id);
+            
+          if (data && data.length > 0) {
+            setBills(prevBills => [...prevBills, data[0]]);
+          }
+        } else {
+          console.log("Successfully deleted bill");
+        }
       }
     } catch (error) {
       console.error("Error deleting bill:", error);
       alert("An unexpected error occurred while deleting the bill.");
     }
-  }
+  };
 
   const handleEditBill = (bill: Bill) => {
     // Only allow the creator to edit the bill
@@ -260,7 +325,8 @@ export default function BillsPage() {
       title: bill.title,
       amount: bill.amount.toString(),
       payee: bill.payee || "",
-      due_date: format(new Date(bill.due_date), "yyyy-MM-dd")
+      due_date: bill.due_date.split('T')[0], // get just the date part
+      payers: [...bill.payers] // Make a copy of the payers array
     });
   }
 
@@ -268,46 +334,66 @@ export default function BillsPage() {
     setEditingBill(null);
   }
 
-  const handleSaveEdit = async (billId: string, payers: string[]) => {
-    // Find the bill first
-    const billToEdit = bills.find(bill => bill.id === billId);
-    
-    // Only allow the creator to save edits to the bill
-    if (!billToEdit || billToEdit.created_by !== currentUser?.id) return;
-    
+  const handleSaveEdit = async (billId: string) => {
     try {
-      const updatedBill = {
-        title: editFormData.title,
-        amount: parseFloat(editFormData.amount),
-        payee: editFormData.payee,
-        due_date: new Date(editFormData.due_date).toISOString(),
-      };
-  
-      // Update UI optimistically
-      setBills(prevBills => prevBills.map(bill => 
-        bill.id === billId ? { ...bill, ...updatedBill } : bill
-      ));
+      const { title, amount, payee, due_date, payers } = editFormData;
       
-      // Then update in database
+      if (!title || !amount || payers.length === 0) {
+        alert("Please fill in all required fields and select at least one payer.");
+        return;
+      }
+      
+      const updatedBill = {
+        title,
+        amount: parseFloat(amount),
+        payee,
+        due_date: new Date(due_date).toISOString(),
+        payers
+      };
+      
+      // Update UI optimistically
+      setBills(prevBills => 
+        prevBills.map(bill => 
+          bill.id === billId 
+            ? { ...bill, ...updatedBill } 
+            : bill
+        )
+      );
+      
+      // Update in database
       const { error } = await supabase
         .from("bills")
         .update(updatedBill)
         .eq("id", billId);
-  
+      
       if (error) {
         console.error("Error updating bill:", error);
-        alert("Failed to update on the server. Changes may not persist if you reload.");
+        alert("Failed to update the bill on the server.");
+        
+        // Revert optimistic update
+        const { data } = await supabase
+          .from("bills")
+          .select("*")
+          .eq("id", billId);
+          
+        if (data && data.length > 0) {
+          setBills(prevBills => 
+            prevBills.map(bill => 
+              bill.id === billId ? data[0] : bill
+            )
+          );
+        }
       } else {
-        console.log("Successfully updated bill in database");
+        console.log("Successfully updated bill");
       }
       
-      // Reset editing state
+      // Reset edit state
       setEditingBill(null);
     } catch (error) {
-      console.error("Error updating bill:", error);
-      alert("Failed to update bill. Please check the console for details.");
+      console.error("Error saving edit:", error);
+      alert("An error occurred while saving changes.");
     }
-  }
+  };
 
   // Update the handleMarkAsPaid function to handle individual payer archiving
   const handleMarkAsPaid = async (billId: string, payerId: string) => {
@@ -711,6 +797,55 @@ export default function BillsPage() {
                                 onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
                                 className="w-full"
                               />
+                              <div className="space-y-2">
+                                <Label>Select Payers (Edit)</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id={`edit-payer-${currentUser.id}`}
+                                      checked={editFormData.payers.includes(currentUser.id)}
+                                      onCheckedChange={() => {
+                                        const isCurrentlySelected = editFormData.payers.includes(currentUser.id);
+                                        setEditFormData({
+                                          ...editFormData,
+                                          payers: isCurrentlySelected 
+                                            ? editFormData.payers.filter(id => id !== currentUser.id)
+                                            : [...editFormData.payers, currentUser.id]
+                                        });
+                                      }}
+                                    />
+                                    <Label 
+                                      htmlFor={`edit-payer-${currentUser.id}`}
+                                      className="text-sm font-medium"
+                                    >
+                                      {currentUser.username} (You)
+                                    </Label>
+                                  </div>
+                                  {users.map(user => (
+                                    <div key={user.id} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id={`edit-payer-${user.id}`}
+                                        checked={editFormData.payers.includes(user.id)}
+                                        onCheckedChange={() => {
+                                          const isCurrentlySelected = editFormData.payers.includes(user.id);
+                                          setEditFormData({
+                                            ...editFormData,
+                                            payers: isCurrentlySelected 
+                                              ? editFormData.payers.filter(id => id !== user.id)
+                                              : [...editFormData.payers, user.id]
+                                          });
+                                        }}
+                                      />
+                                      <Label 
+                                        htmlFor={`edit-payer-${user.id}`}
+                                        className="text-sm font-medium"
+                                      >
+                                        {user.username}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="flex justify-end space-x-2 mt-2">
                                 <Button
                                   size="sm"
@@ -721,7 +856,7 @@ export default function BillsPage() {
                                 </Button>
                                 <Button
                                   size="sm"
-                                  onClick={() => handleSaveEdit(bill.id, bill.payers)}
+                                  onClick={() => handleSaveEdit(bill.id)}
                                 >
                                   <Save className="h-4 w-4 mr-1" /> Save
                                 </Button>
@@ -760,7 +895,7 @@ export default function BillsPage() {
                                   <Button
                                     variant="default"
                                     size="sm"
-                                    onClick={() => handleMarkAsPaid(bill.id, bill.payers[0])}
+                                    onClick={() => handleMarkAsPaid(bill.id, payerId)}
                                     className="bg-green-600 hover:bg-green-700 text-white"
                                   >
                                     Mark Paid
@@ -776,7 +911,7 @@ export default function BillsPage() {
                                   <Button
                                     variant="destructive"
                                     size="sm"
-                                    onClick={() => handleDeleteBill(bill.id, bill.payers[0])}
+                                    onClick={() => handleDeleteBill(bill.id, payerId)}
                                     className="rounded-full"
                                   >
                                     <Trash className="h-4 w-4" />
@@ -873,6 +1008,55 @@ export default function BillsPage() {
                                 onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
                                 className="w-full"
                               />
+                              <div className="space-y-2">
+                                <Label>Select Payers (Edit)</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id={`edit-payer-${currentUser.id}`}
+                                      checked={editFormData.payers.includes(currentUser.id)}
+                                      onCheckedChange={() => {
+                                        const isCurrentlySelected = editFormData.payers.includes(currentUser.id);
+                                        setEditFormData({
+                                          ...editFormData,
+                                          payers: isCurrentlySelected 
+                                            ? editFormData.payers.filter(id => id !== currentUser.id)
+                                            : [...editFormData.payers, currentUser.id]
+                                        });
+                                      }}
+                                    />
+                                    <Label 
+                                      htmlFor={`edit-payer-${currentUser.id}`}
+                                      className="text-sm font-medium"
+                                    >
+                                      {currentUser.username} (You)
+                                    </Label>
+                                  </div>
+                                  {users.map(user => (
+                                    <div key={user.id} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id={`edit-payer-${user.id}`}
+                                        checked={editFormData.payers.includes(user.id)}
+                                        onCheckedChange={() => {
+                                          const isCurrentlySelected = editFormData.payers.includes(user.id);
+                                          setEditFormData({
+                                            ...editFormData,
+                                            payers: isCurrentlySelected 
+                                              ? editFormData.payers.filter(id => id !== user.id)
+                                              : [...editFormData.payers, user.id]
+                                          });
+                                        }}
+                                      />
+                                      <Label 
+                                        htmlFor={`edit-payer-${user.id}`}
+                                        className="text-sm font-medium"
+                                      >
+                                        {user.username}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="flex justify-end space-x-2 mt-2">
                                 <Button
                                   size="sm"
@@ -883,7 +1067,7 @@ export default function BillsPage() {
                                 </Button>
                                 <Button
                                   size="sm"
-                                  onClick={() => handleSaveEdit(bill.id, bill.payers)}
+                                  onClick={() => handleSaveEdit(bill.id)}
                                 >
                                   <Save className="h-4 w-4 mr-1" /> Save
                                 </Button>
