@@ -94,7 +94,7 @@ export default function BillsPage() {
               },
               (payload) => {
                 console.log("Realtime payload received for bills:", payload);
-                
+
                 // For INSERT events, check if it's relevant to the user and add it
                 if (payload.eventType === 'INSERT') {
                   console.log("New bill received:", payload.new);
@@ -180,7 +180,7 @@ export default function BillsPage() {
         id: tempId,
         ...newBill
       };
-      
+
       setBills(prevBills => [tempBill, ...prevBills]);
 
       // Then send to database
@@ -221,9 +221,9 @@ export default function BillsPage() {
     try {
       // Update UI optimistically
       setBills(prevBills => prevBills.filter(bill => bill.id !== id));
-      
+
       console.log(`Optimistically deleted bill ${id}`);
-      
+
       // Then delete from database
       const { error } = await supabase
         .from("bills")
@@ -268,7 +268,7 @@ export default function BillsPage() {
       setBills(prevBills => prevBills.map(bill => 
         bill.id === billId ? { ...bill, ...updatedBill } : bill
       ));
-      
+
       // Then update in database
       const { error } = await supabase
         .from("bills")
@@ -281,7 +281,7 @@ export default function BillsPage() {
       } else {
         console.log("Successfully updated bill in database");
       }
-      
+
       // Reset editing state
       setEditingBill(null);
     } catch (error) {
@@ -338,7 +338,7 @@ export default function BillsPage() {
 
   // Separate bills where the current user is the payee
   const myBillsAsPayee = billsByPayee[currentUser.id] || [];
-  
+
   // Group my bills as payee by payers
   const myBillsByPayer = myBillsAsPayee.reduce((acc, bill) => {
     bill.payers.forEach(payerId => {
@@ -351,7 +351,7 @@ export default function BillsPage() {
     });
     return acc;
   }, {} as Record<string, Bill[]>);
-  
+
   // All other bills grouped by payee
   const otherBillsByPayee = { ...billsByPayee };
   if (currentUser.id in otherBillsByPayee) {
@@ -366,7 +366,7 @@ export default function BillsPage() {
   return (
     <div className="min-h-screen">
       <SumikkoHeader showBackButton />
-      
+
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
         <SumikkoCard
           title="Add New Bill"
@@ -491,7 +491,7 @@ export default function BillsPage() {
               {Object.entries(myBillsByPayer).map(([payerId, payerBills]) => {
                 const payerName = getUsernameById(payerId);
                 const groupTotal = calculateGroupTotal(payerBills);
-                
+
                 return (
                   <SumikkoCard
                     key={payerId}
@@ -609,7 +609,7 @@ export default function BillsPage() {
                   </SumikkoCard>
                 );
               })}
-              
+
               {/* For bills that don't have any other payers than the current user */}
               {myBillsAsPayee.filter(bill => 
                 bill.payers.length === 1 && bill.payers[0] === currentUser.id).length > 0 && (
@@ -739,29 +739,36 @@ export default function BillsPage() {
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {Object.entries(otherBillsByPayee).map(([payee, payeeBills]) => {
+              {Object.entries(otherBillsByPayee).map(([payeeId, payeeBills]) => {
+                // Only show bills where the current user is a payer
+                const relevantBills = payeeBills.filter(bill => 
+                  bill.payers.includes(currentUser.id)
+                );
+
+                if (relevantBills.length === 0) return null;
+
+                // Calculate the sum of per-person amounts for this group
+                const perPersonTotal = relevantBills.reduce((sum, bill) => {
+                  return sum + parseFloat(getAmountPerPerson(bill.amount, bill.payers.length));
+                }, 0).toFixed(2);
+
                 // Find the user name if payee is a user ID
-                let payeeDisplayName = payee;
-                if (payee !== "Unspecified") {
-                  const foundUser = allUsers.find(user => user.id === payee);
+                let payeeDisplayName = payeeId;
+                if (payeeId !== "Unspecified") {
+                  const foundUser = allUsers.find(user => user.id === payeeId);
                   if (foundUser) {
                     payeeDisplayName = foundUser.username;
                   }
                 }
-                
-                // Calculate the per-person total for this group of bills
-                const perPersonTotal = payeeBills.reduce((sum, bill) => {
-                  return sum + parseFloat(getPerPersonTotal(bill));
-                }, 0).toFixed(2);
-                
+
                 return (
-                  <SumikkoCard
-                    key={payee}
+                  <SumikkoCard 
+                    key={payeeId}
                     title={`Owed to ${payeeDisplayName} `}
-                    titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {payeeBills.length} bill{payeeBills.length !== 1 ? 's' : ''}</span>}
+                    titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {relevantBills.length} bill{relevantBills.length !== 1 ? 's' : ''}</span>}
                   >
                     <ul className="space-y-4">
-                      {payeeBills.map((bill) => (
+                      {relevantBills.map((bill) => (
                         <li key={bill.id} className="sumikko-list-item">
                           {editingBill === bill.id ? (
                             // Edit form
@@ -821,7 +828,7 @@ export default function BillsPage() {
                             </div>
                           ) : (
                             // View mode
-                            <div className="flex items-center justify-between gap-4 w-full">
+                            <div className="flex itemscenter justify-between gap-4 w-full">
                               <div className="flex-grow">
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
@@ -877,4 +884,4 @@ export default function BillsPage() {
       </div>
     </div>
   )
-} 
+}
