@@ -554,17 +554,13 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Total: </span>
-                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
                                     Date: {format(new Date(bill.due_date), "PPP")}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
@@ -676,8 +672,8 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Total: </span>
-                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
@@ -820,17 +816,13 @@ export default function BillsPage() {
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
                                   <div>
-                                    <span className="text-muted-foreground">Total: </span>
-                                    <span className="text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
                                     Date: {format(new Date(bill.due_date), "PPP")}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
                                 <div className="text-muted-foreground">
