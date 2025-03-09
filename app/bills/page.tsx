@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { SumikkoCard } from "@/components/sumikko-card"
 import { supabase } from "@/lib/supabase"
@@ -21,6 +22,7 @@ export default function BillsPage() {
   const [newBillDate, setNewBillDate] = useState(format(new Date(), "yyyy-MM-dd"))
   const [selectedPayers, setSelectedPayers] = useState<string[]>([])
   const [users, setUsers] = useState<Profile[]>([])
+  const [allUsers, setAllUsers] = useState<Profile[]>([])
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [editingBill, setEditingBill] = useState<string | null>(null)
@@ -58,13 +60,14 @@ export default function BillsPage() {
           setCurrentUser(profile)
 
           // Get all users (including current user for bills)
-          const { data: allUsers } = await supabase
+          const { data: fetchedUsers } = await supabase
             .from("profiles")
             .select("*")
 
-          if (allUsers) {
+          if (fetchedUsers) {
+            setAllUsers(fetchedUsers);
             // Filter out the current user for the UI list
-            setUsers(allUsers.filter(user => user.id !== session.user.id))
+            setUsers(fetchedUsers.filter(user => user.id !== session.user.id))
           }
 
           // Get all bills where user is creator or payer
@@ -293,7 +296,7 @@ export default function BillsPage() {
 
   const getUsernameById = (userId: string): string => {
     if (userId === currentUser?.id) return `${currentUser.username} (You)`;
-    const user = users.find(u => u.id === userId);
+    const user = allUsers.find(u => u.id === userId);
     return user ? user.username : "Unknown User";
   }
 
@@ -339,14 +342,22 @@ export default function BillsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billPayee">Payee (Who is this bill paid to?)</Label>
-              <Input
-                id="billPayee"
-                className="sumikko-input"
-                value={newBillPayee}
-                onChange={(e) => setNewBillPayee(e.target.value)}
-                placeholder="e.g., Electric Company, Landlord"
-              />
+              <Label htmlFor="billPayee">Select Payee</Label>
+              <Select 
+                value={newBillPayee} 
+                onValueChange={setNewBillPayee}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select who the bill is paid to..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.username} {user.id === currentUser.id ? "(You)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Total Amount ($)</Label>
@@ -368,7 +379,7 @@ export default function BillsPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billDate">Due Date</Label>
+              <Label htmlFor="billDate">Bill Received On</Label>
               <Input
                 id="billDate"
                 className="sumikko-input"
@@ -426,101 +437,124 @@ export default function BillsPage() {
           </div>
         </SumikkoCard>
 
-        {Object.entries(billsByPayee).map(([payee, payeeBills]) => (
-          <SumikkoCard
-            key={payee}
-            title={`Bills for ${payee}`}
-            subtitle={`${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
-          >
-            <ul className="space-y-4">
-              {payeeBills.map((bill) => (
-                <li key={bill.id} className="sumikko-list-item">
-                  {editingBill === bill.id ? (
-                    // Edit form
-                    <div className="w-full space-y-3">
-                      <Input
-                        value={editFormData.title}
-                        onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                        placeholder="Bill title"
-                        className="w-full"
-                      />
-                      <Input
-                        value={editFormData.payee}
-                        onChange={(e) => setEditFormData({ ...editFormData, payee: e.target.value })}
-                        placeholder="Payee"
-                        className="w-full"
-                      />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={editFormData.amount}
-                        onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
-                        placeholder="Amount"
-                        className="w-full"
-                      />
-                      <Input
-                        type="date"
-                        value={editFormData.due_date}
-                        onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
-                        className="w-full"
-                      />
-                      <div className="flex justify-end space-x-2 mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelEdit}
+        {Object.entries(billsByPayee).map(([payee, payeeBills]) => {
+          // Find the user name if payee is a user ID
+          let payeeDisplayName = payee;
+          if (payee !== "Unspecified") {
+            const foundUser = allUsers.find(user => user.id === payee);
+            if (foundUser) {
+              payeeDisplayName = foundUser.username;
+              if (foundUser.id === currentUser.id) {
+                payeeDisplayName += " (You)";
+              }
+            }
+          }
+          
+          return (
+            <SumikkoCard
+              key={payee}
+              title={`Bills for ${payeeDisplayName}`}
+              subtitle={`${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
+            >
+              <ul className="space-y-4">
+                {payeeBills.map((bill) => (
+                  <li key={bill.id} className="sumikko-list-item">
+                    {editingBill === bill.id ? (
+                      // Edit form
+                      <div className="w-full space-y-3">
+                        <Input
+                          value={editFormData.title}
+                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                          placeholder="Bill title"
+                          className="w-full"
+                        />
+                        <Select 
+                          value={editFormData.payee} 
+                          onValueChange={(value) => setEditFormData({ ...editFormData, payee: value })}
                         >
-                          <X className="h-4 w-4 mr-1" /> Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveEdit(bill.id, bill.payers)}
-                        >
-                          <Save className="h-4 w-4 mr-1" /> Save
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    // View mode
-                    <div className="flex items-center justify-between gap-4 w-full">
-                      <div className="flex-grow">
-                        <div className="font-medium">{bill.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Amount: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Due date: {format(new Date(bill.due_date), "PPP")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Created by: {getUsernameById(bill.created_by)}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Payers: {bill.payers.map(id => getUsernameById(id)).join(", ")}
-                        </div>
-                      </div>
-                      {bill.created_by === currentUser.id && (
-                        <div className="flex space-x-2">
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select payee" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allUsers.map((user) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.username} {user.id === currentUser.id ? "(You)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editFormData.amount}
+                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                          placeholder="Amount"
+                          className="w-full"
+                        />
+                        <Input
+                          type="date"
+                          value={editFormData.due_date}
+                          onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
+                          className="w-full"
+                        />
+                        <div className="flex justify-end space-x-2 mt-2">
                           <Button
-                            className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
-                            onClick={() => handleEditBill(bill)}
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCancelEdit}
                           >
-                            <Edit className="h-4 w-4" />
+                            <X className="h-4 w-4 mr-1" /> Cancel
                           </Button>
                           <Button
-                            className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                            onClick={() => handleDeleteBill(bill.id)}
+                            size="sm"
+                            onClick={() => handleSaveEdit(bill.id, bill.payers)}
                           >
-                            <Trash className="h-4 w-4" />
+                            <Save className="h-4 w-4 mr-1" /> Save
                           </Button>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </SumikkoCard>
-        ))}
+                      </div>
+                    ) : (
+                      // View mode
+                      <div className="flex items-center justify-between gap-4 w-full">
+                        <div className="flex-grow">
+                          <div className="font-medium">{bill.title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            Amount: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Received on: {format(new Date(bill.due_date), "PPP")}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Created by: {getUsernameById(bill.created_by)}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Payers: {bill.payers.map(id => getUsernameById(id)).join(", ")}
+                          </div>
+                        </div>
+                        {bill.created_by === currentUser.id && (
+                          <div className="flex space-x-2">
+                            <Button
+                              className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
+                              onClick={() => handleEditBill(bill)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
+                              onClick={() => handleDeleteBill(bill.id)}
+                            >
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </SumikkoCard>
+          );
+        })}
       </div>
     </div>
   )
