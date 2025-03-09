@@ -376,6 +376,14 @@ export default function ChoresPage() {
       <SumikkoHeader showBackButton />
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
+        {isGuest && (
+          <div className="bg-muted p-4 rounded-lg mb-4">
+            <p className="text-center text-muted-foreground">
+              You are in guest mode. You can view chores but cannot edit or add new ones.
+            </p>
+          </div>
+        )}
+
         {!isGuest && (
           <Card>
             <CardHeader>
@@ -422,13 +430,6 @@ export default function ChoresPage() {
               </div>
             </CardContent>
           </Card>
-        )}
-        {isGuest && (
-          <div className="bg-muted p-4 rounded-lg mb-4">
-            <p className="text-center text-muted-foreground">
-              You are in guest mode. You can view chores but cannot edit or add new ones.
-            </p>
-          </div>
         )}
 
         {/* Daily Chores */}
@@ -624,6 +625,15 @@ export default function ChoresPage() {
               </ul>
           </CardContent>
         </Card>
+        )}
+
+        {/* No chores message */}
+        {dailyChores.length === 0 && weeklyChores.length === 0 && monthlyChores.length === 0 && (
+          <Card>
+            <CardContent className="py-6">
+              <p className="text-center text-muted-foreground">No chores created yet.</p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
