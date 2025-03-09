@@ -22,6 +22,10 @@ export type Bill = {
   payers: string[];
   created_at: string;
   payee?: string;
+  archived_at?: string;
+  // Fields used in the UI for archived bills
+  archived_record_id?: string;
+  payer_id?: string;
 };
 
 export type Chore = {

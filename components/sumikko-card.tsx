@@ -1,31 +1,32 @@
-import { cn } from "@/lib/utils"
-import { ReactNode } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import type { ReactNode } from "react"
 
 interface SumikkoCardProps {
-  children: ReactNode
-  className?: string
-  title?: string
-  subtitle?: string
-  titleExtra?: ReactNode
+  title: ReactNode;
+  subtitle?: ReactNode;
+  titleExtra?: ReactNode;
+  children: ReactNode;
 }
 
-export function SumikkoCard({ children, className, title, subtitle, titleExtra }: SumikkoCardProps) {
+export function SumikkoCard({ title, subtitle, titleExtra, children }: SumikkoCardProps) {
   return (
-    <div className={cn("sumikko-card", className)}>
-      {(title || subtitle) && (
-        <div className="mb-6">
-          {title && (
-            <h2 className="sumikko-title flex items-center text-white">
-              {title}
-              {titleExtra && titleExtra}
-            </h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {title}
+          </div>
+          {titleExtra && (
+            <div>{titleExtra}</div>
           )}
-          {subtitle && (
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
-          )}
-        </div>
-      )}
-      {children}
-    </div>
+        </CardTitle>
+        {subtitle && (
+          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        )}
+      </CardHeader>
+      <CardContent>
+        {children}
+      </CardContent>
+    </Card>
   )
 } 

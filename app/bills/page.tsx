@@ -37,6 +37,8 @@ export default function BillsPage() {
     due_date: ""
   })
   const router = useRouter()
+  const [archivedBills, setArchivedBills] = useState<Bill[]>([])
+  const [showArchived, setShowArchived] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -58,14 +60,13 @@ export default function BillsPage() {
         if (profile) {
           setCurrentUser(profile)
 
-          // Get all users (including current user for bills)
+          // Get all users
           const { data: fetchedUsers } = await supabase
             .from("profiles")
             .select("*")
 
           if (fetchedUsers) {
             setAllUsers(fetchedUsers);
-            // Filter out the current user for the UI list
             setUsers(fetchedUsers.filter(user => user.id !== session.user.id))
           }
 
@@ -74,16 +75,18 @@ export default function BillsPage() {
             .from("bills")
             .select("*")
             .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}}`)
-            .order("created_at", { ascending: false })
 
           if (userBills) {
-            setBills(userBills)
+            // Sort by due_date descending (newest first)
+            const sortedBills = userBills.sort((a, b) => 
+              new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
+            );
+            setBills(sortedBills)
           }
 
-          // Set up real-time subscription for bills with user ID available
-          const userId = session.user.id;
+          // Set up real-time subscription
           const channel = supabase
-            .channel("bills-channel-" + Date.now()) // Use unique channel name
+            .channel("bills-channel-" + Date.now())
             .on(
               "postgres_changes",
               {
@@ -92,43 +95,35 @@ export default function BillsPage() {
                 table: "bills"
               },
               (payload) => {
-                console.log("Realtime payload received for bills:", payload);
-                
-                // For INSERT events, check if it's relevant to the user and add it
                 if (payload.eventType === 'INSERT') {
-                  console.log("New bill received:", payload.new);
                   const newBill = payload.new as Bill;
-                  // Only add if the bill is created by the user or the user is a payer
-                  if (newBill.created_by === userId || (newBill.payers && newBill.payers.includes(userId))) {
-                    console.log("Adding new bill to state");
-                    setBills(prevBills => [newBill, ...prevBills]);
+                  if (newBill.created_by === session.user.id || (newBill.payers && newBill.payers.includes(session.user.id))) {
+                    setBills(prevBills => {
+                      const updatedBills = [newBill, ...prevBills];
+                      return updatedBills.sort((a, b) => 
+                        new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
+                      );
+                    });
                   }
                 } 
-                // For UPDATE events, update the existing bill
                 else if (payload.eventType === 'UPDATE') {
-                  console.log("Updating bill in state:", payload.new);
-                  setBills(prevBills => 
-                    prevBills.map(bill => 
+                  setBills(prevBills => {
+                    const updatedBills = prevBills.map(bill => 
                       bill.id === payload.new.id ? payload.new as Bill : bill
-                    )
-                  );
+                    );
+                    return updatedBills.sort((a, b) => 
+                      new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
+                    );
+                  });
                 }
-                // For DELETE events, remove the bill
                 else if (payload.eventType === 'DELETE') {
-                  console.log("Removing bill from state:", payload.old);
-                  setBills(prevBills => 
-                    prevBills.filter(bill => bill.id !== payload.old.id)
-                  );
+                  setBills(prevBills => prevBills.filter(bill => bill.id !== payload.old.id));
                 }
               }
             )
-            .subscribe((status) => {
-              console.log("Bills channel subscription status:", status);
-            });
+            .subscribe();
 
-          // Save channel to be unsubscribed on cleanup
           return () => {
-            console.log("Unsubscribing from bills channel");
             channel.unsubscribe();
           }
         }
@@ -207,30 +202,57 @@ export default function BillsPage() {
     }
   }
 
-  const handleDeleteBill = async (id: string) => {
+  const handleDeleteBill = async (id: string, payerId?: string) => {
     // Find the bill first
     const billToDelete = bills.find(bill => bill.id === id);
     
     // Only allow the creator to delete the bill
     if (!billToDelete || billToDelete.created_by !== currentUser?.id) return;
-    
-    try {
-      // Update UI optimistically
-      setBills(prevBills => prevBills.filter(bill => bill.id !== id));
-      
-      console.log(`Optimistically deleted bill ${id}`);
-      
-      // Then delete from database
-      const { error } = await supabase
-        .from("bills")
-        .delete()
-        .eq("id", id);
   
-      if (error) {
-        console.error("Error deleting bill:", error);
-        alert("Failed to delete on the server. The item may reappear if you reload.");
+    try {
+      // If payerId is specified, we're just removing a specific payer
+      // Otherwise, delete the entire bill
+      if (payerId) {
+        // Get updated payers array without the specified payer
+        const updatedPayers = billToDelete.payers.filter(p => p !== payerId);
+        
+        // Update UI optimistically
+        setBills(prevBills => prevBills.map(bill => 
+          bill.id === id ? { ...bill, payers: updatedPayers } : bill
+        ));
+        
+        console.log(`Optimistically removed payer ${payerId} from bill ${id}`);
+        
+        // Update database
+        const { error } = await supabase
+          .from("bills")
+          .update({ payers: updatedPayers })
+          .eq("id", id);
+  
+        if (error) {
+          console.error("Error removing payer from bill:", error);
+          alert("Failed to update on the server. The changes may revert if you reload.");
+        } else {
+          console.log("Successfully removed payer from bill in database");
+        }
       } else {
-        console.log("Successfully deleted bill from database");
+        // Update UI optimistically
+        setBills(prevBills => prevBills.filter(bill => bill.id !== id));
+        
+        console.log(`Optimistically deleted bill ${id}`);
+        
+        // Delete from database
+        const { error } = await supabase
+          .from("bills")
+          .delete()
+          .eq("id", id);
+    
+        if (error) {
+          console.error("Error deleting bill:", error);
+          alert("Failed to delete on the server. The item may reappear if you reload.");
+        } else {
+          console.log("Successfully deleted bill from database");
+        }
       }
     } catch (error) {
       console.error("Error deleting bill:", error);
@@ -295,13 +317,99 @@ export default function BillsPage() {
     }
   }
 
-  const togglePayer = (payerId: string) => {
-    setSelectedPayers(prev => 
-      prev.includes(payerId)
-        ? prev.filter(id => id !== payerId)
-        : [...prev, payerId]
-    )
-  }
+  // Update the handleMarkAsPaid function to handle individual payer archiving
+  const handleMarkAsPaid = async (billId: string, payerId: string) => {
+    // Find the bill
+    const bill = bills.find(bill => bill.id === billId);
+    
+    // Only allow the creator to mark bills as paid
+    if (!bill || bill.created_by !== currentUser?.id) return;
+    
+    try {
+      // Create a copy of the bill with only this payer
+      const archivedBill = { 
+        ...bill, 
+        payers: [payerId], // Only include the specific payer being archived
+        archived_at: new Date().toISOString()
+      };
+      
+      // Add to archived_bills table
+      const { error: archiveError } = await supabase
+        .from("archived_bills")
+        .insert([{
+          original_bill_id: billId,
+          payer_id: payerId,
+          bill_data: archivedBill,
+          archived_at: new Date().toISOString()
+        }]);
+
+      if (archiveError) {
+        console.error("Error archiving bill:", archiveError);
+        alert("Failed to archive bill on the server.");
+        return;
+      }
+
+      // Remove this payer from the original bill
+      const updatedPayers = bill.payers.filter(p => p !== payerId);
+      
+      if (updatedPayers.length === 0) {
+        // If no payers left, delete the bill
+        const { error: deleteError } = await supabase
+          .from("bills")
+          .delete()
+          .eq("id", billId);
+
+        if (deleteError) {
+          console.error("Error deleting bill:", deleteError);
+          alert("Failed to delete bill on the server.");
+          return;
+        }
+
+        // Update local state
+        setBills(prevBills => prevBills.filter(b => b.id !== billId));
+      } else {
+        // Update the original bill's payers list
+        const { error: updateError } = await supabase
+          .from("bills")
+          .update({ payers: updatedPayers })
+          .eq("id", billId);
+
+        if (updateError) {
+          console.error("Error updating original bill:", updateError);
+          alert("Failed to update original bill on the server.");
+          return;
+        }
+
+        // Update local state
+        setBills(prevBills => prevBills.map(b => 
+          b.id === billId ? { ...b, payers: updatedPayers } : b
+        ));
+      }
+    } catch (error) {
+      console.error("Error marking bill as paid:", error);
+    }
+  };
+
+  // Add this function to handle marking all bills as paid for a specific payer
+  const handleMarkAllAsPaid = async (payerId: string) => {
+    // Get all bills where this payer is included and current user is creator
+    const billsToArchive = bills.filter(bill => 
+      bill.created_by === currentUser?.id && 
+      bill.payers.includes(payerId)
+    );
+    
+    if (billsToArchive.length === 0) return;
+    
+    // Confirm with the user
+    if (!window.confirm(`Mark all ${billsToArchive.length} bills as paid for ${getUsernameById(payerId)}?`)) {
+      return;
+    }
+    
+    // Process each bill
+    for (const bill of billsToArchive) {
+      await handleMarkAsPaid(bill.id, payerId);
+    }
+  };
 
   const getAmountPerPerson = (amount: number, payersCount: number) => {
     if (payersCount === 0) return "0.00"
@@ -390,9 +498,32 @@ export default function BillsPage() {
     return getAmountPerPerson(bill.amount, bill.payers.length);
   };
 
+  const togglePayer = (payerId: string) => {
+    setSelectedPayers(prev => 
+      prev.includes(payerId)
+        ? prev.filter(id => id !== payerId)
+        : [...prev, payerId]
+    )
+  }
+
+  // Update the SumikkoCard title prop to accept ReactNode
+  interface SumikkoCardProps {
+    title: React.ReactNode;
+    subtitle?: string;
+    titleExtra?: React.ReactNode;
+    children: React.ReactNode;
+  }
+
   return (
-    <div className="min-h-screen">
+    <div className="flex justify-between items-center max-w-7xl mx-auto px-4 py-2">
       <SumikkoHeader showBackButton />
+      <Button 
+        variant="outline"
+        onClick={() => router.push("/bills/archive")}
+        className="ml-auto"
+      >
+        View Archived Bills
+      </Button>
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
         <SumikkoCard
@@ -511,7 +642,7 @@ export default function BillsPage() {
             <h2 className="text-2xl font-bold mb-4">
               Money Owed to You 
               <span className="ml-2 text-lg font-semibold text-primary">
-                ${calculateTotalAcrossGroups(myBillsByPayer)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
+                ${calculateTotalAcrossGroups(myBillsByPayer)}
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -522,7 +653,21 @@ export default function BillsPage() {
                 return (
                   <SumikkoCard
                     key={payerId}
-                    title={`Owed by ${payerName} `}
+                    title={
+                      <div className="flex justify-between w-full items-center">
+                        <div>Owed by {payerName}</div>
+                        {currentUser?.id === bills.find(bill => bill.payers.includes(payerId))?.created_by && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleMarkAllAsPaid(payerId)}
+                            className="ml-2"
+                          >
+                            Mark All Paid
+                          </Button>
+                        )}
+                      </div>
+                    }
                     titleExtra={<span className="ml-1 text-base font-semibold text-primary">${groupTotal} • {payerBills.length} bill{payerBills.length !== 1 ? 's' : ''}</span>}
                   >
                     <ul className="space-y-4">
@@ -615,14 +760,26 @@ export default function BillsPage() {
                               {bill.created_by === currentUser.id && (
                                 <div className="flex space-x-2">
                                   <Button
-                                    className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleMarkAsPaid(bill.id, bill.payers[0])}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    Mark Paid
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => handleEditBill(bill)}
+                                    className="rounded-full"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <Button
-                                    className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                                    onClick={() => handleDeleteBill(bill.id)}
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteBill(bill.id, bill.payers[0])}
+                                    className="rounded-full"
                                   >
                                     <Trash className="h-4 w-4" />
                                   </Button>
@@ -732,14 +889,26 @@ export default function BillsPage() {
                               {bill.created_by === currentUser.id && (
                                 <div className="flex space-x-2">
                                   <Button
-                                    className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleMarkAsPaid(bill.id, bill.payers[0])}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    Mark Paid
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => handleEditBill(bill)}
+                                    className="rounded-full"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <Button
-                                    className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                                    onClick={() => handleDeleteBill(bill.id)}
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteBill(bill.id, bill.payers[0])}
+                                    className="rounded-full"
                                   >
                                     <Trash className="h-4 w-4" />
                                   </Button>
@@ -881,14 +1050,26 @@ export default function BillsPage() {
                               {bill.created_by === currentUser.id && (
                                 <div className="flex space-x-2">
                                   <Button
-                                    className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleMarkAsPaid(bill.id, bill.payers[0])}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    Mark Paid
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => handleEditBill(bill)}
+                                    className="rounded-full"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <Button
-                                    className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                                    onClick={() => handleDeleteBill(bill.id)}
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteBill(bill.id, bill.payers[0])}
+                                    className="rounded-full"
                                   >
                                     <Trash className="h-4 w-4" />
                                   </Button>
