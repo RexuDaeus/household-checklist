@@ -106,12 +106,15 @@ export default function BillsPage() {
     if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
 
     try {
+      // Include bill creator in payers array
+      const allPayers = [...selectedPayers, currentUser.id]
+      
       const { data: bill, error } = await supabase
         .from("bills")
         .insert([{
           title: newBillName,
           amount: parseFloat(newBillAmount),
-          payers: selectedPayers,
+          payers: allPayers,
           created_by: currentUser.id,
           due_date: new Date().toISOString()
         }])
@@ -177,10 +180,16 @@ export default function BillsPage() {
   // Calculate totals for each creator
   const creatorTotals = Object.entries(billsByCreator).reduce((acc, [creator, bills]) => {
     acc[creator] = bills.reduce((sum, bill) => {
-      if (bill.payers.includes(currentUser.id) && bill.created_by !== currentUser.id) {
-        return sum + (bill.amount / bill.payers.length)
+      if (bill.created_by !== currentUser.id) {
+        // If current user is not the creator, only add their share
+        if (bill.payers.includes(currentUser.id)) {
+          return sum + (bill.amount / bill.payers.length)
+        }
+        return sum
+      } else {
+        // For bills created by currentUser, add the total amount
+        return sum + bill.amount
       }
-      return sum + bill.amount
     }, 0)
     return acc
   }, {} as Record<string, number>)
@@ -217,17 +226,17 @@ export default function BillsPage() {
                 onChange={(e) => setNewBillAmount(e.target.value)}
                 placeholder="Enter total amount"
               />
-              {newBillAmount && selectedPayers.length >= 0 && (
+              {newBillAmount && selectedPayers.length > 0 && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length)} each
-                  (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
+                  ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length + 1)} each
+                  (split between {selectedPayers.length + 1} people including you)
                 </p>
               )}
             </div>
             <div className="space-y-2">
               <Label>Select Payers</Label>
               <p className="text-sm text-muted-foreground mb-2">
-                Select who needs to pay this bill (bill creator is excluded)
+                Select who needs to pay this bill (you will be automatically included)
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {users.map((user) => (
@@ -284,7 +293,7 @@ export default function BillsPage() {
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {creatorId === currentUser.id ? (
-                          <>To be paid by: {bill.payers.map(id => 
+                          <>To be paid by: You and {bill.payers.filter(id => id !== currentUser.id).map(id => 
                             users.find(u => u.id === id)?.username
                           ).join(", ")}</>
                         ) : (
