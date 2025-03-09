@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ClipboardList, DollarSign, Calendar } from "lucide-react"
+import { ClipboardList, DollarSign, Newspaper } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SumikkoHeader } from "@/components/sumikko-header"
@@ -66,26 +66,26 @@ export default function Dashboard() {
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Calendar className="h-5 w-5 mr-2" />
-              Miniature Calendar
+              <Newspaper className="h-5 w-5 mr-2" />
+              New York Times Crosswords
             </CardTitle>
-            <CardDescription>Daily miniature art creations by Tatsuya Tanaka.</CardDescription>
+            <CardDescription>Daily crossword puzzles from The New York Times.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="aspect-video w-full rounded-lg overflow-hidden border">
               <iframe 
-                src="https://miniature-calendar.com/" 
+                src="https://www.nytimes.com/crosswords" 
                 width="100%" 
                 height="100%" 
                 style={{ border: 0 }} 
                 allowFullScreen
-                title="Miniature Calendar"
+                title="New York Times Crosswords"
                 loading="lazy"
               />
             </div>
             <div className="mt-4 text-center">
               <a 
-                href="https://miniature-calendar.com/" 
+                href="https://www.nytimes.com/crosswords" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
