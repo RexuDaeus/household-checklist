@@ -208,6 +208,12 @@ export default function BillsPage() {
   }
 
   const handleDeleteBill = async (id: string) => {
+    // Find the bill first
+    const billToDelete = bills.find(bill => bill.id === id);
+    
+    // Only allow the creator to delete the bill
+    if (!billToDelete || billToDelete.created_by !== currentUser?.id) return;
+    
     try {
       // Update UI optimistically
       setBills(prevBills => prevBills.filter(bill => bill.id !== id));
@@ -219,7 +225,7 @@ export default function BillsPage() {
         .from("bills")
         .delete()
         .eq("id", id);
-
+  
       if (error) {
         console.error("Error deleting bill:", error);
         alert("Failed to delete on the server. The item may reappear if you reload.");
@@ -232,6 +238,9 @@ export default function BillsPage() {
   }
 
   const handleEditBill = (bill: Bill) => {
+    // Only allow the creator to edit the bill
+    if (bill.created_by !== currentUser?.id) return;
+    
     setEditingBill(bill.id);
     setEditFormData({
       title: bill.title,
@@ -246,6 +255,12 @@ export default function BillsPage() {
   }
 
   const handleSaveEdit = async (billId: string, payers: string[]) => {
+    // Find the bill first
+    const billToEdit = bills.find(bill => bill.id === billId);
+    
+    // Only allow the creator to save edits to the bill
+    if (!billToEdit || billToEdit.created_by !== currentUser?.id) return;
+    
     try {
       const updatedBill = {
         title: editFormData.title,
@@ -253,7 +268,7 @@ export default function BillsPage() {
         payee: editFormData.payee,
         due_date: new Date(editFormData.due_date).toISOString(),
       };
-
+  
       // Update UI optimistically
       setBills(prevBills => prevBills.map(bill => 
         bill.id === billId ? { ...bill, ...updatedBill } : bill
@@ -264,7 +279,7 @@ export default function BillsPage() {
         .from("bills")
         .update(updatedBill)
         .eq("id", billId);
-
+  
       if (error) {
         console.error("Error updating bill:", error);
         alert("Failed to update on the server. Changes may not persist if you reload.");
