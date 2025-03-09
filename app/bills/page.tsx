@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Trash } from "lucide-react"
+import { Plus, Trash, Edit, Save, X } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,15 +11,30 @@ import { SumikkoHeader } from "@/components/sumikko-header"
 import { SumikkoCard } from "@/components/sumikko-card"
 import { supabase } from "@/lib/supabase"
 import type { Bill, Profile } from "@/lib/supabase"
+import { format } from "date-fns"
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
   const [newBillName, setNewBillName] = useState("")
   const [newBillAmount, setNewBillAmount] = useState("")
+  const [newBillPayee, setNewBillPayee] = useState("")
+  const [newBillDate, setNewBillDate] = useState(format(new Date(), "yyyy-MM-dd"))
   const [selectedPayers, setSelectedPayers] = useState<string[]>([])
   const [users, setUsers] = useState<Profile[]>([])
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [editingBill, setEditingBill] = useState<string | null>(null)
+  const [editFormData, setEditFormData] = useState<{
+    title: string;
+    amount: string;
+    payee: string;
+    due_date: string;
+  }>({
+    title: "",
+    amount: "",
+    payee: "",
+    due_date: ""
+  })
   const router = useRouter()
 
   useEffect(() => {
@@ -126,7 +141,7 @@ export default function BillsPage() {
   }, [router])
 
   const handleNewBill = async () => {
-    if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
+    if (!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0 || !currentUser) return
 
     try {
       // Ensure we include the current user in payers if they should be part of the bill
@@ -138,9 +153,10 @@ export default function BillsPage() {
       const newBill = {
         title: newBillName,
         amount: parseFloat(newBillAmount),
+        payee: newBillPayee,
         payers: payersIncludingCreator,
         created_by: currentUser.id,
-        due_date: new Date().toISOString(),
+        due_date: new Date(newBillDate).toISOString(),
         created_at: new Date().toISOString()
       };
 
@@ -180,6 +196,8 @@ export default function BillsPage() {
 
       setNewBillName("");
       setNewBillAmount("");
+      setNewBillPayee("");
+      setNewBillDate(format(new Date(), "yyyy-MM-dd"));
       setSelectedPayers([]);
     } catch (error) {
       console.error("Error adding bill:", error);
@@ -203,14 +221,60 @@ export default function BillsPage() {
       if (error) {
         console.error("Error deleting bill:", error);
         alert("Failed to delete on the server. The item may reappear if you reload.");
-        
-        // If there was an error, we could fetch the bills again to restore the state
-        // But this would be jarring to the user, so we'll just alert them
       } else {
         console.log("Successfully deleted bill from database");
       }
     } catch (error) {
       console.error("Error deleting bill:", error);
+    }
+  }
+
+  const handleEditBill = (bill: Bill) => {
+    setEditingBill(bill.id);
+    setEditFormData({
+      title: bill.title,
+      amount: bill.amount.toString(),
+      payee: bill.payee || "",
+      due_date: format(new Date(bill.due_date), "yyyy-MM-dd")
+    });
+  }
+
+  const handleCancelEdit = () => {
+    setEditingBill(null);
+  }
+
+  const handleSaveEdit = async (billId: string, payers: string[]) => {
+    try {
+      const updatedBill = {
+        title: editFormData.title,
+        amount: parseFloat(editFormData.amount),
+        payee: editFormData.payee,
+        due_date: new Date(editFormData.due_date).toISOString(),
+      };
+
+      // Update UI optimistically
+      setBills(prevBills => prevBills.map(bill => 
+        bill.id === billId ? { ...bill, ...updatedBill } : bill
+      ));
+      
+      // Then update in database
+      const { error } = await supabase
+        .from("bills")
+        .update(updatedBill)
+        .eq("id", billId);
+
+      if (error) {
+        console.error("Error updating bill:", error);
+        alert("Failed to update on the server. Changes may not persist if you reload.");
+      } else {
+        console.log("Successfully updated bill in database");
+      }
+      
+      // Reset editing state
+      setEditingBill(null);
+    } catch (error) {
+      console.error("Error updating bill:", error);
+      alert("Failed to update bill. Please check the console for details.");
     }
   }
 
@@ -227,6 +291,12 @@ export default function BillsPage() {
     return (amount / payersCount).toFixed(2)
   }
 
+  const getUsernameById = (userId: string): string => {
+    if (userId === currentUser?.id) return `${currentUser.username} (You)`;
+    const user = users.find(u => u.id === userId);
+    return user ? user.username : "Unknown User";
+  }
+
   if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
@@ -238,25 +308,15 @@ export default function BillsPage() {
     )
   }
 
-  // Group bills by creator
-  const billsByCreator = bills.reduce((acc, bill) => {
-    if (!acc[bill.created_by]) {
-      acc[bill.created_by] = []
+  // Group bills by payee instead of creator
+  const billsByPayee = bills.reduce((acc, bill) => {
+    const payeeKey = bill.payee || "Unspecified";
+    if (!acc[payeeKey]) {
+      acc[payeeKey] = [];
     }
-    acc[bill.created_by].push(bill)
-    return acc
-  }, {} as Record<string, Bill[]>)
-
-  // Calculate totals for each creator
-  const creatorTotals = Object.entries(billsByCreator).reduce((acc, [creator, bills]) => {
-    acc[creator] = bills.reduce((sum, bill) => {
-      if (bill.payers.includes(currentUser.id) && bill.created_by !== currentUser.id) {
-        return sum + (bill.amount / bill.payers.length)
-      }
-      return sum + bill.amount
-    }, 0)
-    return acc
-  }, {} as Record<string, number>)
+    acc[payeeKey].push(bill);
+    return acc;
+  }, {} as Record<string, Bill[]>);
 
   return (
     <div className="min-h-screen">
@@ -279,6 +339,16 @@ export default function BillsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="billPayee">Payee (Who is this bill paid to?)</Label>
+              <Input
+                id="billPayee"
+                className="sumikko-input"
+                value={newBillPayee}
+                onChange={(e) => setNewBillPayee(e.target.value)}
+                placeholder="e.g., Electric Company, Landlord"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="amount">Total Amount ($)</Label>
               <Input
                 id="amount"
@@ -296,6 +366,16 @@ export default function BillsPage() {
                   (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billDate">Due Date</Label>
+              <Input
+                id="billDate"
+                className="sumikko-input"
+                type="date"
+                value={newBillDate}
+                onChange={(e) => setNewBillDate(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label>Select Payers</Label>
@@ -338,7 +418,7 @@ export default function BillsPage() {
             <Button 
               className="w-full sumikko-button"
               onClick={handleNewBill}
-              disabled={!newBillName || !newBillAmount || selectedPayers.length === 0}
+              disabled={!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0}
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Bill
@@ -346,54 +426,101 @@ export default function BillsPage() {
           </div>
         </SumikkoCard>
 
-        {Object.entries(billsByCreator).map(([creatorId, creatorBills]) => {
-          const creator = users.find(u => u.id === creatorId) || currentUser
-          return (
-            <SumikkoCard
-              key={creatorId}
-              title={creatorId === currentUser.id ? "Bills You Created" : `Bills From ${creator.username}`}
-              subtitle={creatorId === currentUser.id 
-                ? `Total amount: $${creatorTotals[creatorId].toFixed(2)}`
-                : `Your share: $${creatorTotals[creatorId].toFixed(2)}`
-              }
-            >
-              <ul className="space-y-4">
-                {creatorBills.map((bill) => (
-                  <li key={bill.id} className="flex items-center justify-between gap-4 sumikko-list-item">
-                    <div>
-                      <div className="font-medium">{bill.title}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {creatorId === currentUser.id ? (
-                          <>Total: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each</>
-                        ) : (
-                          <>Your share: ${getAmountPerPerson(bill.amount, bill.payers.length)}</>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {creatorId === currentUser.id ? (
-                          <>To be paid by: {bill.payers.map(id => 
-                            users.find(u => u.id === id)?.username
-                          ).join(", ")}</>
-                        ) : (
-                          <>Other payers: {bill.payers.filter(id => id !== currentUser.id)
-                            .map(id => users.find(u => u.id === id)?.username).join(", ")}</>
-                        )}
+        {Object.entries(billsByPayee).map(([payee, payeeBills]) => (
+          <SumikkoCard
+            key={payee}
+            title={`Bills for ${payee}`}
+            subtitle={`${payeeBills.length} bill${payeeBills.length !== 1 ? 's' : ''}`}
+          >
+            <ul className="space-y-4">
+              {payeeBills.map((bill) => (
+                <li key={bill.id} className="sumikko-list-item">
+                  {editingBill === bill.id ? (
+                    // Edit form
+                    <div className="w-full space-y-3">
+                      <Input
+                        value={editFormData.title}
+                        onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                        placeholder="Bill title"
+                        className="w-full"
+                      />
+                      <Input
+                        value={editFormData.payee}
+                        onChange={(e) => setEditFormData({ ...editFormData, payee: e.target.value })}
+                        placeholder="Payee"
+                        className="w-full"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editFormData.amount}
+                        onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                        placeholder="Amount"
+                        className="w-full"
+                      />
+                      <Input
+                        type="date"
+                        value={editFormData.due_date}
+                        onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
+                        className="w-full"
+                      />
+                      <div className="flex justify-end space-x-2 mt-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCancelEdit}
+                        >
+                          <X className="h-4 w-4 mr-1" /> Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveEdit(bill.id, bill.payers)}
+                        >
+                          <Save className="h-4 w-4 mr-1" /> Save
+                        </Button>
                       </div>
                     </div>
-                    {creatorId === currentUser.id && (
-                      <Button
-                        className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
-                        onClick={() => handleDeleteBill(bill.id)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </SumikkoCard>
-          )
-        })}
+                  ) : (
+                    // View mode
+                    <div className="flex items-center justify-between gap-4 w-full">
+                      <div className="flex-grow">
+                        <div className="font-medium">{bill.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Amount: ${bill.amount.toFixed(2)} • ${getAmountPerPerson(bill.amount, bill.payers.length)} each
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Due date: {format(new Date(bill.due_date), "PPP")}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Created by: {getUsernameById(bill.created_by)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Payers: {bill.payers.map(id => getUsernameById(id)).join(", ")}
+                        </div>
+                      </div>
+                      {bill.created_by === currentUser.id && (
+                        <div className="flex space-x-2">
+                          <Button
+                            className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}
+                            onClick={() => handleEditBill(bill)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            className={buttonVariants({ variant: "destructive", size: "sm", className: "rounded-full" })}
+                            onClick={() => handleDeleteBill(bill.id)}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </SumikkoCard>
+        ))}
       </div>
     </div>
   )

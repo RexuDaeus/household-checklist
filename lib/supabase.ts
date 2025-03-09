@@ -21,6 +21,7 @@ export type Bill = {
   created_by: string;
   payers: string[];
   created_at: string;
+  payee?: string;
 };
 
 export type Chore = {
