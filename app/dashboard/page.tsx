@@ -72,17 +72,6 @@ export default function Dashboard() {
             <CardDescription>Daily crossword puzzles from The New York Times.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="aspect-video w-full rounded-lg overflow-hidden border">
-              <iframe 
-                src="https://www.nytimes.com/crosswords" 
-                width="100%" 
-                height="100%" 
-                style={{ border: 0 }} 
-                allowFullScreen
-                title="New York Times Crosswords"
-                loading="lazy"
-              />
-            </div>
             <div className="mt-4 text-center">
               <a 
                 href="https://www.nytimes.com/crosswords" 
@@ -90,7 +79,7 @@ export default function Dashboard() {
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
-                Open in new tab
+                Open New York Times Crosswords
               </a>
             </div>
           </CardContent>
