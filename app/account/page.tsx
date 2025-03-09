@@ -20,6 +20,9 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [message, setMessage] = useState<{ type: "success" | "error", text: string } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -107,6 +110,51 @@ export default function AccountPage() {
       setIsSaving(false)
     }
   }
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE" || !currentUser) return;
+    
+    setIsDeletingAccount(true);
+    setMessage(null);
+
+    try {
+      // Step 1: Delete the user's profile
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", currentUser.id);
+
+      if (profileError) throw profileError;
+
+      // Step 2: Delete the user's auth account
+      const { error: authError } = await supabase.auth.admin.deleteUser(
+        currentUser.id
+      );
+
+      if (authError) {
+        // If we can't delete the auth user (might be due to permissions),
+        // still let the user know their profile was deleted
+        console.error("Error deleting auth user:", authError);
+        // Try to sign out at least
+        await supabase.auth.signOut();
+        document.cookie = "user=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+        router.push("/login");
+        return;
+      }
+
+      // Step 3: Sign out and redirect to login
+      await supabase.auth.signOut();
+      document.cookie = "user=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+      router.push("/login");
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      setMessage({ 
+        type: "error", 
+        text: "Failed to delete account. Please try again or contact support." 
+      });
+      setIsDeletingAccount(false);
+    }
+  };
 
   if (isLoading || !currentUser) {
     return (
@@ -215,6 +263,61 @@ export default function AccountPage() {
                     "Update Password"
                   )}
                 </Button>
+              </div>
+            </div>
+
+            <div className="border-t pt-6 mt-6">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-destructive">Delete Account</h3>
+                  <p className="text-sm text-muted-foreground">
+                    This action is permanent and cannot be undone. All your data will be removed.
+                  </p>
+                </div>
+                {confirmDelete ? (
+                  <div className="space-y-4 p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+                    <p className="text-sm font-medium text-destructive">
+                      Please type "DELETE" to confirm account deletion:
+                    </p>
+                    <div className="space-y-2">
+                      <Input
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        className="border-destructive/50"
+                      />
+                    </div>
+                    <div className="flex flex-row gap-2">
+                      <Button
+                        variant="destructive"
+                        onClick={handleDeleteAccount}
+                        disabled={deleteConfirmText !== "DELETE" || isDeletingAccount}
+                      >
+                        {isDeletingAccount ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</>
+                        ) : (
+                          "Confirm Delete"
+                        )}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setConfirmDelete(false);
+                          setDeleteConfirmText("");
+                        }}
+                        disabled={isDeletingAccount}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    Delete Account
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

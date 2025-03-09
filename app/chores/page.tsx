@@ -2,15 +2,21 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Trash } from "lucide-react"
+import { Plus, Trash, Check } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { supabase } from "@/lib/supabase"
 import type { Chore, Profile } from "@/lib/supabase"
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 export default function ChoresPage() {
   const [chores, setChores] = useState<Chore[]>([])
@@ -130,7 +136,7 @@ export default function ChoresPage() {
       const newChore = {
         title: newChoreName,
         frequency: newChoreFrequency,
-        assigned_to: null,
+        assigned_to: [],
         created_by: session.user.id,
         created_at: new Date().toISOString(),
         lastReset: new Date().toISOString()
@@ -177,32 +183,46 @@ export default function ChoresPage() {
     }
   }
 
-  const handleAssignChore = async (choreId: string, userId: string | null) => {
+  const handleAssignChore = async (choreId: string, userId: string, isAssigned: boolean) => {
     try {
-      // If userId is an empty string or "unassigned", convert it to null
-      const assignedTo = userId === "" || userId === "unassigned" ? null : userId;
+      // Find the current chore
+      const chore = chores.find(c => c.id === choreId);
+      if (!chore) return;
+      
+      // Create a new assigned_to array based on current state
+      let newAssignedTo = [...(chore.assigned_to || [])];
+      
+      if (isAssigned) {
+        // Add user if not already in the array
+        if (!newAssignedTo.includes(userId)) {
+          newAssignedTo.push(userId);
+        }
+      } else {
+        // Remove user from array
+        newAssignedTo = newAssignedTo.filter(id => id !== userId);
+      }
       
       // Update UI optimistically
-      setChores(prevChores => prevChores.map(chore => 
-        chore.id === choreId ? { ...chore, assigned_to: assignedTo } : chore
+      setChores(prevChores => prevChores.map(c => 
+        c.id === choreId ? { ...c, assigned_to: newAssignedTo } : c
       ));
       
-      console.log(`Optimistically assigned chore ${choreId} to user ${assignedTo || 'none'}`);
+      console.log(`Optimistically updated assignments for chore ${choreId}:`, newAssignedTo);
       
       // Then update in database
       const { error } = await supabase
         .from("chores")
-        .update({ assigned_to: assignedTo })
+        .update({ assigned_to: newAssignedTo })
         .eq("id", choreId);
 
       if (error) {
-        console.error("Error assigning chore:", error);
-        alert("Failed to update assignment on the server. The change may not persist if you reload.");
+        console.error("Error updating chore assignments:", error);
+        alert("Failed to update assignments on the server. The change may not persist if you reload.");
       } else {
-        console.log("Successfully assigned chore in database");
+        console.log("Successfully updated chore assignments in database");
       }
     } catch (error) {
-      console.error("Error assigning chore:", error);
+      console.error("Error updating chore assignments:", error);
     }
   }
 
@@ -269,6 +289,11 @@ export default function ChoresPage() {
     return user ? user.username : "Unknown User";
   }
 
+  // Function to check if a user is assigned to a chore
+  const isUserAssigned = (chore: Chore, userId: string): boolean => {
+    return Array.isArray(chore.assigned_to) && chore.assigned_to.includes(userId);
+  }
+
   if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
@@ -285,51 +310,71 @@ export default function ChoresPage() {
   const weeklyChores = chores.filter((chore) => chore.frequency === "weekly")
   const monthlyChores = chores.filter((chore) => chore.frequency === "monthly")
 
-  const ChoresList = ({ chores }: { chores: Chore[] }) => (
-    <ul className="space-y-4">
-      {chores.map((chore) => {
-        const assignedUser = users.find(u => u.id === chore.assigned_to)
-  return (
-          <li key={chore.id} className="flex items-center justify-between gap-4">
-            <div>
-              <span>{chore.title}</span>
-              <div className="text-sm text-muted-foreground">
-                {assignedUser ? `Assigned to: ${assignedUser.username}` : "Unassigned"}
+  const renderChoreItem = (chore: Chore) => {
+    return (
+      <li key={chore.id} className="flex items-center justify-between gap-4">
+        <div className="flex-grow">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={chore.is_completed}
+              onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
+              className="h-5 w-5 rounded border-gray-300"
+            />
+            <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+              {chore.title}
+            </span>
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            <span>Created by: {getUsernameById(chore.created_by)}</span>
+            {chore.assigned_to && chore.assigned_to.length > 0 && (
+              <span className="ml-2">
+                • Assigned to: {chore.assigned_to.map(userId => getUsernameById(userId)).join(", ")}
+              </span>
+            )}
           </div>
         </div>
-            <div className="flex gap-2">
-              <Select
-                value={chore.assigned_to || ""}
-                onValueChange={(value) => handleAssignChore(chore.id, value)}
-              >
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Assign to..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassign</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.username}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                className={buttonVariants({
-                  variant: "ghost",
-                  size: "sm",
-                  className: "text-destructive hover:text-destructive-foreground"
-                })}
-                onClick={() => handleDeleteChore(chore.id)}
-              >
-                <Trash className="h-4 w-4" />
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                Assign
               </Button>
-            </div>
-          </li>
-        )
-      })}
-    </ul>
-  )
+            </PopoverTrigger>
+            <PopoverContent className="w-60 p-4">
+              <h4 className="font-medium mb-2">Assign To:</h4>
+              <div className="space-y-2">
+                {users.map((user) => (
+                  <div key={user.id} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={`user-${chore.id}-${user.id}`} 
+                      checked={isUserAssigned(chore, user.id)}
+                      onCheckedChange={(checked) => {
+                        handleAssignChore(chore.id, user.id, checked as boolean);
+                      }}
+                    />
+                    <Label
+                      htmlFor={`user-${chore.id}-${user.id}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {user.username}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={() => handleDeleteChore(chore.id)}
+          >
+            <Trash className="h-4 w-4" />
+          </Button>
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="min-h-screen">
@@ -384,188 +429,47 @@ export default function ChoresPage() {
 
         {/* Daily Chores */}
         {dailyChores.length > 0 && (
-        <Card>
-          <CardHeader>
+          <Card>
+            <CardHeader>
               <CardTitle>Daily Chores</CardTitle>
               <CardDescription>Reset automatically at 4 AM Sydney time</CardDescription>
-          </CardHeader>
-          <CardContent>
+            </CardHeader>
+            <CardContent>
               <ul className="space-y-4">
-                {dailyChores.map((chore) => (
-                  <li key={chore.id} className="flex items-center justify-between gap-4">
-                    <div className="flex-grow">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={chore.is_completed}
-                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
-                          className="h-5 w-5 rounded border-gray-300"
-                        />
-                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
-                          {chore.title}
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <span>Created by: {getUsernameById(chore.created_by)}</span>
-                        {chore.assigned_to && (
-                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={chore.assigned_to || "unassigned"}
-                        onValueChange={(value) => handleAssignChore(chore.id, value)}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteChore(chore.id)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                {dailyChores.map(renderChoreItem)}
               </ul>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         )}
 
         {/* Weekly Chores */}
         {weeklyChores.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Weekly Chores</CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle>Weekly Chores</CardTitle>
               <CardDescription>Reset automatically every Monday at 4 AM Sydney time</CardDescription>
-          </CardHeader>
-          <CardContent>
+            </CardHeader>
+            <CardContent>
               <ul className="space-y-4">
-                {weeklyChores.map((chore) => (
-                  <li key={chore.id} className="flex items-center justify-between gap-4">
-                    <div className="flex-grow">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={chore.is_completed}
-                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
-                          className="h-5 w-5 rounded border-gray-300"
-                        />
-                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
-                          {chore.title}
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <span>Created by: {getUsernameById(chore.created_by)}</span>
-                        {chore.assigned_to && (
-                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={chore.assigned_to || "unassigned"}
-                        onValueChange={(value) => handleAssignChore(chore.id, value)}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteChore(chore.id)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                {weeklyChores.map(renderChoreItem)}
               </ul>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         )}
 
         {/* Monthly Chores */}
         {monthlyChores.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Chores</CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Chores</CardTitle>
               <CardDescription>Reset automatically on the 1st of each month at 4 AM Sydney time</CardDescription>
-          </CardHeader>
-          <CardContent>
+            </CardHeader>
+            <CardContent>
               <ul className="space-y-4">
-                {monthlyChores.map((chore) => (
-                  <li key={chore.id} className="flex items-center justify-between gap-4">
-                    <div className="flex-grow">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={chore.is_completed}
-                          onChange={() => handleToggleChore(chore.id, chore.is_completed || false)}
-                          className="h-5 w-5 rounded border-gray-300"
-                        />
-                        <span className={`text-lg ${chore.is_completed ? 'line-through text-muted-foreground' : ''}`}>
-                          {chore.title}
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <span>Created by: {getUsernameById(chore.created_by)}</span>
-                        {chore.assigned_to && (
-                          <span className="ml-2">• Assigned to: {getUsernameById(chore.assigned_to)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={chore.assigned_to || "unassigned"}
-                        onValueChange={(value) => handleAssignChore(chore.id, value)}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteChore(chore.id)}
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                {monthlyChores.map(renderChoreItem)}
               </ul>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
