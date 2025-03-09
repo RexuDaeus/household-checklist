@@ -393,7 +393,7 @@ export default function BillsPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billDate">Bill Received On</Label>
+              <Label htmlFor="billDate">Bill Date</Label>
               <Input
                 id="billDate"
                 className="sumikko-input"
@@ -470,10 +470,10 @@ export default function BillsPage() {
 
         {/* Your Bills (where you are the payee) */}
         {myBillsAsPayee.length > 0 && (
-          <div className="bg-secondary/10 p-6 rounded-lg border border-secondary/30">
+          <div>
             <h2 className="text-2xl font-bold mb-4">
               Money Owed to You 
-              <span className="ml-2 text-base font-medium text-muted-foreground">
+              <span className="ml-2 text-lg font-semibold text-secondary">
                 ${calculateGroupTotal(myBillsAsPayee)} • {myBillsAsPayee.length} bill{myBillsAsPayee.length !== 1 ? 's' : ''}
               </span>
             </h2>
@@ -557,14 +557,14 @@ export default function BillsPage() {
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
-                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                    Date: {format(new Date(bill.due_date), "PPP")}
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Per person: </span>
-                                    <span className="text-base font-medium">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    <span className="text-base">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
                                   </div>
                                 </div>
-                                <div className="text-sm text-muted-foreground">
+                                <div className="text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
                                 </div>
                                 <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
@@ -676,10 +676,10 @@ export default function BillsPage() {
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
-                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                    Date: {format(new Date(bill.due_date), "PPP")}
                                   </div>
                                 </div>
-                                <div className="text-sm text-muted-foreground">
+                                <div className="text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
                                 </div>
                                 <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
@@ -718,7 +718,7 @@ export default function BillsPage() {
           <div>
             <h2 className="text-2xl font-bold mb-4">
               Money You Owe to Others
-              <span className="ml-2 text-base font-medium text-muted-foreground">
+              <span className="ml-2 text-lg font-semibold text-primary">
                 ${Object.values(otherBillsByPayee).reduce((total, bills) => {
                   return total + bills.reduce((subtotal, bill) => {
                     return subtotal + parseFloat(getPerPersonTotal(bill));
@@ -819,14 +819,14 @@ export default function BillsPage() {
                                 </div>
                                 <div className="flex justify-between mt-2">
                                   <div className="text-muted-foreground">
-                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                    Date: {format(new Date(bill.due_date), "PPP")}
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Total: </span>
-                                    <span className="text-base font-medium">${bill.amount.toFixed(2)}</span>
+                                    <span className="text-base">${bill.amount.toFixed(2)}</span>
                                   </div>
                                 </div>
-                                <div className="text-sm text-muted-foreground">
+                                <div className="text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
                                 </div>
                                 <div className="text-sm font-medium mt-1 bg-primary/10 p-1 rounded">
