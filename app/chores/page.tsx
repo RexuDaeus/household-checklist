@@ -190,7 +190,7 @@ export default function ChoresPage() {
       if (!chore) return;
       
       // Create a new assigned_to array based on current state
-      let newAssignedTo = [...(chore.assigned_to || [])];
+      let newAssignedTo = getAssignedUsers(chore.assigned_to);
       
       if (isAssigned) {
         // Add user if not already in the array
@@ -291,7 +291,20 @@ export default function ChoresPage() {
 
   // Function to check if a user is assigned to a chore
   const isUserAssigned = (chore: Chore, userId: string): boolean => {
-    return Array.isArray(chore.assigned_to) && chore.assigned_to.includes(userId);
+    if (!chore.assigned_to) return false;
+    if (Array.isArray(chore.assigned_to)) {
+      return chore.assigned_to.includes(userId);
+    }
+    // Handle legacy format where assigned_to might be a string
+    return chore.assigned_to === userId;
+  }
+
+  // Helper function to ensure assigned_to is always an array
+  const getAssignedUsers = (assigned_to: any): string[] => {
+    if (!assigned_to) return [];
+    if (Array.isArray(assigned_to)) return assigned_to;
+    // Handle legacy string format
+    return [assigned_to];
   }
 
   if (isLoading || !currentUser) {
@@ -327,9 +340,9 @@ export default function ChoresPage() {
           </div>
           <div className="text-sm text-muted-foreground mt-1">
             <span>Created by: {getUsernameById(chore.created_by)}</span>
-            {chore.assigned_to && chore.assigned_to.length > 0 && (
+            {chore.assigned_to && (
               <span className="ml-2">
-                • Assigned to: {chore.assigned_to.map(userId => getUsernameById(userId)).join(", ")}
+                • Assigned to: {getAssignedUsers(chore.assigned_to).map(userId => getUsernameById(userId)).join(", ")}
               </span>
             )}
           </div>
