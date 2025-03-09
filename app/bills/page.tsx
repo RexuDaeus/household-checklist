@@ -65,8 +65,8 @@ export default function BillsPage() {
 
           // Set up real-time subscription for bills with user ID available
           const userId = session.user.id;
-          const billsSubscription = supabase
-            .channel("bills")
+          const channel = supabase
+            .channel("bills-channel-" + Date.now()) // Use unique channel name
             .on(
               "postgres_changes",
               {
@@ -74,40 +74,45 @@ export default function BillsPage() {
                 schema: "public",
                 table: "bills"
               },
-              async (payload) => {
-                console.log("Received bill change:", payload);
+              (payload) => {
+                console.log("Realtime payload received for bills:", payload);
                 
                 // For INSERT events, check if it's relevant to the user and add it
                 if (payload.eventType === 'INSERT') {
+                  console.log("New bill received:", payload.new);
                   const newBill = payload.new as Bill;
                   // Only add if the bill is created by the user or the user is a payer
-                  if (newBill.created_by === userId || newBill.payers.includes(userId)) {
+                  if (newBill.created_by === userId || (newBill.payers && newBill.payers.includes(userId))) {
+                    console.log("Adding new bill to state");
                     setBills(prevBills => [newBill, ...prevBills]);
                   }
                 } 
                 // For UPDATE events, update the existing bill
                 else if (payload.eventType === 'UPDATE') {
-                  const updatedBill = payload.new as Bill;
+                  console.log("Updating bill in state:", payload.new);
                   setBills(prevBills => 
                     prevBills.map(bill => 
-                      bill.id === updatedBill.id ? updatedBill : bill
+                      bill.id === payload.new.id ? payload.new as Bill : bill
                     )
                   );
                 }
                 // For DELETE events, remove the bill
                 else if (payload.eventType === 'DELETE') {
-                  const deletedBillId = payload.old.id;
+                  console.log("Removing bill from state:", payload.old);
                   setBills(prevBills => 
-                    prevBills.filter(bill => bill.id !== deletedBillId)
+                    prevBills.filter(bill => bill.id !== payload.old.id)
                   );
                 }
               }
             )
-            .subscribe()
+            .subscribe((status) => {
+              console.log("Bills channel subscription status:", status);
+            });
 
-          // Save subscription to be unsubscribed on cleanup
+          // Save channel to be unsubscribed on cleanup
           return () => {
-            billsSubscription.unsubscribe()
+            console.log("Unsubscribing from bills channel");
+            channel.unsubscribe();
           }
         }
       } catch (error) {
@@ -141,21 +146,36 @@ export default function BillsPage() {
 
       console.log("Creating new bill:", newBill);
 
-      const { error } = await supabase
+      // Optimistically update UI first
+      const tempId = Date.now().toString();
+      const tempBill: Bill = {
+        id: tempId,
+        ...newBill
+      };
+      
+      setBills(prevBills => [tempBill, ...prevBills]);
+
+      // Then send to database
+      const { data, error } = await supabase
         .from("bills")
-        .insert([newBill]);
+        .insert([newBill])
+        .select();
 
       if (error) {
         console.error("Supabase error adding bill:", error);
-        
-        // Fallback to local state update if database fails
-        const localBill: Bill = {
-          id: Date.now().toString(),
-          ...newBill
-        };
-        
-        setBills(prevBills => [localBill, ...prevBills]);
+        // Keep the temporary bill in place with a note that it's not synced
         alert("Bill added locally. Note: Database sync failed, but bill is visible for this session.");
+      } else {
+        console.log("Bill added successfully to database:", data);
+        // If the database insertion was successful, replace the temp bill
+        // with the real one that has the proper ID from the database
+        if (data && data.length > 0) {
+          setBills(prevBills => {
+            return prevBills.map(bill => 
+              bill.id === tempId ? data[0] : bill
+            );
+          });
+        }
       }
 
       setNewBillName("");

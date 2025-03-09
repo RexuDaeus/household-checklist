@@ -61,8 +61,8 @@ export default function ChoresPage() {
           }
 
           // Set up real-time subscription for chores
-          const choresSubscription = supabase
-            .channel("chores")
+          const channel = supabase
+            .channel("chores-channel-" + Date.now()) // Use unique channel name
             .on(
               "postgres_changes",
               {
@@ -70,37 +70,40 @@ export default function ChoresPage() {
                 schema: "public",
                 table: "chores"
               },
-              async (payload) => {
-                console.log("Received chore change:", payload);
+              (payload) => {
+                console.log("Realtime payload received for chores:", payload);
                 
                 // For INSERT events, add the new chore directly to state
                 if (payload.eventType === 'INSERT') {
-                  const newChore = payload.new as Chore;
-                  setChores(prevChores => [newChore, ...prevChores]);
+                  console.log("Adding new chore to state:", payload.new);
+                  setChores(prevChores => [payload.new as Chore, ...prevChores]);
                 } 
                 // For UPDATE events, update the existing chore
                 else if (payload.eventType === 'UPDATE') {
-                  const updatedChore = payload.new as Chore;
+                  console.log("Updating chore in state:", payload.new);
                   setChores(prevChores => 
                     prevChores.map(chore => 
-                      chore.id === updatedChore.id ? updatedChore : chore
+                      chore.id === payload.new.id ? payload.new as Chore : chore
                     )
                   );
                 }
                 // For DELETE events, remove the chore
                 else if (payload.eventType === 'DELETE') {
-                  const deletedChoreId = payload.old.id;
+                  console.log("Removing chore from state:", payload.old);
                   setChores(prevChores => 
-                    prevChores.filter(chore => chore.id !== deletedChoreId)
+                    prevChores.filter(chore => chore.id !== payload.old.id)
                   );
                 }
               }
             )
-            .subscribe()
+            .subscribe((status) => {
+              console.log("Chores channel subscription status:", status);
+            });
 
-          // Save subscription to be unsubscribed on cleanup
+          // Save channel to be unsubscribed on cleanup
           return () => {
-            choresSubscription.unsubscribe()
+            console.log("Unsubscribing from chores channel");
+            channel.unsubscribe();
           }
         }
       } catch (error) {
@@ -135,25 +138,36 @@ export default function ChoresPage() {
 
       console.log("Creating new chore:", newChore);
 
-      const { error } = await supabase
+      // Optimistically update UI first
+      const tempId = Date.now().toString();
+      const tempChore: Chore = {
+        id: tempId,
+        ...newChore
+      };
+      
+      setChores(prevChores => [tempChore, ...prevChores]);
+
+      // Then send to database
+      const { data, error } = await supabase
         .from("chores")
-        .insert([newChore]);
+        .insert([newChore])
+        .select();
 
       if (error) {
         console.error("Supabase error adding chore:", error);
-        
-        // Fallback to local state update if database fails
-        const localChore: Chore = {
-          id: Date.now().toString(),
-          title: newChoreName,
-          frequency: newChoreFrequency,
-          assigned_to: null,
-          created_at: new Date().toISOString(),
-          lastReset: new Date().toISOString()
-        };
-        
-        setChores(prevChores => [localChore, ...prevChores]);
+        // Keep the temporary chore in place with a note that it's not synced
         alert("Chore added locally. Note: Database sync failed, but chore is visible for this session.");
+      } else {
+        console.log("Chore added successfully to database:", data);
+        // If the database insertion was successful, we might want to replace the temp chore
+        // with the real one that has the proper ID from the database
+        if (data && data.length > 0) {
+          setChores(prevChores => {
+            return prevChores.map(chore => 
+              chore.id === tempId ? data[0] : chore
+            );
+          });
+        }
       }
 
       setNewChoreName("");
