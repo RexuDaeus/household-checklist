@@ -62,6 +62,53 @@ export default function BillsPage() {
           if (userBills) {
             setBills(userBills)
           }
+
+          // Set up real-time subscription for bills with user ID available
+          const userId = session.user.id;
+          const billsSubscription = supabase
+            .channel("bills")
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "bills"
+              },
+              async (payload) => {
+                console.log("Received bill change:", payload);
+                
+                // For INSERT events, check if it's relevant to the user and add it
+                if (payload.eventType === 'INSERT') {
+                  const newBill = payload.new as Bill;
+                  // Only add if the bill is created by the user or the user is a payer
+                  if (newBill.created_by === userId || newBill.payers.includes(userId)) {
+                    setBills(prevBills => [newBill, ...prevBills]);
+                  }
+                } 
+                // For UPDATE events, update the existing bill
+                else if (payload.eventType === 'UPDATE') {
+                  const updatedBill = payload.new as Bill;
+                  setBills(prevBills => 
+                    prevBills.map(bill => 
+                      bill.id === updatedBill.id ? updatedBill : bill
+                    )
+                  );
+                }
+                // For DELETE events, remove the bill
+                else if (payload.eventType === 'DELETE') {
+                  const deletedBillId = payload.old.id;
+                  setBills(prevBills => 
+                    prevBills.filter(bill => bill.id !== deletedBillId)
+                  );
+                }
+              }
+            )
+            .subscribe()
+
+          // Save subscription to be unsubscribed on cleanup
+          return () => {
+            billsSubscription.unsubscribe()
+          }
         }
       } catch (error) {
         console.error("Error loading data:", error)
@@ -71,75 +118,43 @@ export default function BillsPage() {
     }
 
     loadData()
-
-    // Set up real-time subscription for bills
-    const billsSubscription = supabase
-      .channel("bills")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bills"
-        },
-        async (payload) => {
-          // Reload bills when there's a change
-          const { data: userBills } = await supabase
-            .from("bills")
-            .select("*")
-            .or(`created_by.eq.${currentUser?.id},payers.cs.{${currentUser?.id}}`)
-            .order("created_at", { ascending: false })
-
-          if (userBills) {
-            setBills(userBills)
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      billsSubscription.unsubscribe()
-    }
   }, [router])
 
   const handleNewBill = async () => {
     if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
 
     try {
-      console.log("Creating new bill:", {
+      // Ensure we include the current user in payers if they should be part of the bill
+      const payersIncludingCreator = [...selectedPayers];
+      if (!payersIncludingCreator.includes(currentUser.id)) {
+        payersIncludingCreator.push(currentUser.id);
+      }
+
+      const newBill = {
         title: newBillName,
         amount: parseFloat(newBillAmount),
-        payers: selectedPayers,
+        payers: payersIncludingCreator,
         created_by: currentUser.id,
-        due_date: new Date().toISOString()
-      });
+        due_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      };
 
-      const { data, error } = await supabase
+      console.log("Creating new bill:", newBill);
+
+      const { error } = await supabase
         .from("bills")
-        .insert([{
-          title: newBillName,
-          amount: parseFloat(newBillAmount),
-          payers: selectedPayers,
-          created_by: currentUser.id,
-          due_date: new Date().toISOString(),
-          created_at: new Date().toISOString() // Explicitly setting created_at
-        }]);
+        .insert([newBill]);
 
       if (error) {
         console.error("Supabase error adding bill:", error);
         
         // Fallback to local state update if database fails
-        const newBill: Bill = {
+        const localBill: Bill = {
           id: Date.now().toString(),
-          title: newBillName,
-          amount: parseFloat(newBillAmount),
-          payers: selectedPayers,
-          created_by: currentUser.id,
-          due_date: new Date().toISOString(),
-          created_at: new Date().toISOString()
+          ...newBill
         };
         
-        setBills(prevBills => [newBill, ...prevBills]);
+        setBills(prevBills => [localBill, ...prevBills]);
         alert("Bill added locally. Note: Database sync failed, but bill is visible for this session.");
       }
 

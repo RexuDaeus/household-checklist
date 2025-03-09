@@ -59,6 +59,49 @@ export default function ChoresPage() {
           if (allChores) {
             setChores(allChores)
           }
+
+          // Set up real-time subscription for chores
+          const choresSubscription = supabase
+            .channel("chores")
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "chores"
+              },
+              async (payload) => {
+                console.log("Received chore change:", payload);
+                
+                // For INSERT events, add the new chore directly to state
+                if (payload.eventType === 'INSERT') {
+                  const newChore = payload.new as Chore;
+                  setChores(prevChores => [newChore, ...prevChores]);
+                } 
+                // For UPDATE events, update the existing chore
+                else if (payload.eventType === 'UPDATE') {
+                  const updatedChore = payload.new as Chore;
+                  setChores(prevChores => 
+                    prevChores.map(chore => 
+                      chore.id === updatedChore.id ? updatedChore : chore
+                    )
+                  );
+                }
+                // For DELETE events, remove the chore
+                else if (payload.eventType === 'DELETE') {
+                  const deletedChoreId = payload.old.id;
+                  setChores(prevChores => 
+                    prevChores.filter(chore => chore.id !== deletedChoreId)
+                  );
+                }
+              }
+            )
+            .subscribe()
+
+          // Save subscription to be unsubscribed on cleanup
+          return () => {
+            choresSubscription.unsubscribe()
+          }
         }
       } catch (error) {
         console.error("Error loading data:", error)
@@ -68,34 +111,6 @@ export default function ChoresPage() {
     }
 
     loadData()
-
-    // Set up real-time subscription for chores
-    const choresSubscription = supabase
-      .channel("chores")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chores"
-        },
-        async (payload) => {
-          // Reload chores when there's a change
-          const { data: allChores } = await supabase
-            .from("chores")
-            .select("*")
-            .order("created_at", { ascending: false })
-
-          if (allChores) {
-            setChores(allChores)
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      choresSubscription.unsubscribe()
-    }
   }, [router])
 
   const handleAddChore = async () => {
@@ -113,7 +128,7 @@ export default function ChoresPage() {
         title: newChoreName,
         frequency: newChoreFrequency,
         assigned_to: null,
-        created_by: session.user.id, // Set the creator of the chore
+        created_by: session.user.id,
         created_at: new Date().toISOString(),
         lastReset: new Date().toISOString()
       };
