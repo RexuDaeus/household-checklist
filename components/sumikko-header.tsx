@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "./ui/button"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
+import { useGuest } from "@/lib/guest-context"
 
 interface SumikkoHeaderProps {
   showBackButton?: boolean
@@ -21,6 +22,7 @@ export function SumikkoHeader({
   const router = useRouter()
   const [username, setUsername] = useState<string | null>(propUsername || null)
   const [isLoading, setIsLoading] = useState(!propUsername)
+  const { isGuest, setIsGuest } = useGuest()
 
   useEffect(() => {
     if (propUsername) {
@@ -58,8 +60,12 @@ export function SumikkoHeader({
 
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      if (isGuest) {
+        setIsGuest(false)
+      } else {
+        const { error } = await supabase.auth.signOut()
+        if (error) throw error
+      }
 
       document.cookie = "user=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
       
@@ -92,20 +98,29 @@ export function SumikkoHeader({
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {username && !hideAuth && (
+            {(username || isGuest) && !hideAuth && (
               <>
                 <button
-                  onClick={() => router.push("/account")}
-                  className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
+                  onClick={() => !isGuest && router.push("/account")}
+                  className={`flex items-center gap-2 px-4 py-2 bg-secondary rounded-full ${
+                    !isGuest ? "hover:bg-secondary/80 transition-colors cursor-pointer" : "cursor-default"
+                  }`}
                 >
                   <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                     <span className="text-sm font-medium text-primary">
-                      {username.charAt(0).toUpperCase()}
+                      {isGuest ? "G" : username?.charAt(0).toUpperCase()}
                     </span>
                   </div>
-                  <span className="text-sm font-medium">
-                    Hi, {username}
-                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">
+                      {isGuest ? "Guest" : `Hi, ${username}`}
+                    </span>
+                    {isGuest && (
+                      <span className="text-xs text-muted-foreground">
+                        View-only mode
+                      </span>
+                    )}
+                  </div>
                 </button>
                 {showBackButton && (
                   <Button
@@ -120,7 +135,7 @@ export function SumikkoHeader({
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4" />
-                  Logout
+                  {isGuest ? "Exit Guest Mode" : "Logout"}
                 </Button>
               </>
             )}

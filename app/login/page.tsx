@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { supabase } from "@/lib/supabase"
 import { setUserCookie } from "@/lib/auth"
+import { useGuest } from "@/lib/guest-context"
+import { Separator } from "@/components/ui/separator"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -17,6 +19,7 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const { setIsGuest } = useGuest()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,6 +76,12 @@ export default function LoginPage() {
     }
   }
 
+  const handleGuestAccess = () => {
+    setIsGuest(true)
+    setUserCookie("Guest")
+    router.push("/dashboard")
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <SumikkoHeader hideAuth />
@@ -112,7 +121,23 @@ export default function LoginPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
-              <p className="text-sm text-center">
+              <div className="w-full flex items-center gap-4 my-4">
+                <Separator className="flex-1" />
+                <span className="text-sm text-muted-foreground">or</span>
+                <Separator className="flex-1" />
+              </div>
+              <Button 
+                type="button"
+                variant="outline" 
+                className="w-full"
+                onClick={handleGuestAccess}
+              >
+                Continue as Guest
+              </Button>
+              <p className="text-sm text-center text-muted-foreground">
+                Guest users can view but not edit any content
+              </p>
+              <p className="text-sm text-center mt-4">
                 Don't have an account?{" "}
                 <Link href="/register" className="underline">
                   Create one
