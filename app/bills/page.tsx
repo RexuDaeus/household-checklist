@@ -106,25 +106,49 @@ export default function BillsPage() {
     if (!newBillName || !newBillAmount || selectedPayers.length === 0 || !currentUser) return
 
     try {
-      const { data: bill, error } = await supabase
+      console.log("Creating new bill:", {
+        title: newBillName,
+        amount: parseFloat(newBillAmount),
+        payers: selectedPayers,
+        created_by: currentUser.id,
+        due_date: new Date().toISOString()
+      });
+
+      const { data, error } = await supabase
         .from("bills")
         .insert([{
           title: newBillName,
           amount: parseFloat(newBillAmount),
           payers: selectedPayers,
           created_by: currentUser.id,
-          due_date: new Date().toISOString()
-        }])
-        .select()
-        .single()
+          due_date: new Date().toISOString(),
+          created_at: new Date().toISOString() // Explicitly setting created_at
+        }]);
 
-      if (error) throw error
+      if (error) {
+        console.error("Supabase error adding bill:", error);
+        
+        // Fallback to local state update if database fails
+        const newBill: Bill = {
+          id: Date.now().toString(),
+          title: newBillName,
+          amount: parseFloat(newBillAmount),
+          payers: selectedPayers,
+          created_by: currentUser.id,
+          due_date: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+        
+        setBills(prevBills => [newBill, ...prevBills]);
+        alert("Bill added locally. Note: Database sync failed, but bill is visible for this session.");
+      }
 
-      setNewBillName("")
-      setNewBillAmount("")
-      setSelectedPayers([])
+      setNewBillName("");
+      setNewBillAmount("");
+      setSelectedPayers([]);
     } catch (error) {
-      console.error("Error adding bill:", error)
+      console.error("Error adding bill:", error);
+      alert("Failed to add bill. Please check the console for details.");
     }
   }
 

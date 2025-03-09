@@ -27,7 +27,7 @@ export type Chore = {
   id: string;
   title: string;
   frequency: 'daily' | 'weekly' | 'monthly';
-  assigned_to: string;
+  assigned_to: string | null;
   created_at: string;
   lastReset?: string;
 };

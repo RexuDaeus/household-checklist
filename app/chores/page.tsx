@@ -102,6 +102,14 @@ export default function ChoresPage() {
     if (!newChoreName || !currentUser) return
 
     try {
+      console.log("Creating new chore:", {
+        title: newChoreName,
+        frequency: newChoreFrequency,
+        assigned_to: null,
+        created_at: new Date().toISOString(),
+        lastReset: new Date().toISOString()
+      });
+
       const { error } = await supabase
         .from("chores")
         .insert([{
@@ -110,13 +118,29 @@ export default function ChoresPage() {
           assigned_to: null,
           created_at: new Date().toISOString(),
           lastReset: new Date().toISOString()
-        }])
+        }]);
 
-      if (error) throw error
+      if (error) {
+        console.error("Supabase error adding chore:", error);
+        
+        // Fallback to local state update if database fails
+        const newChore: Chore = {
+          id: Date.now().toString(),
+          title: newChoreName,
+          frequency: newChoreFrequency,
+          assigned_to: null,
+          created_at: new Date().toISOString(),
+          lastReset: new Date().toISOString()
+        };
+        
+        setChores(prevChores => [newChore, ...prevChores]);
+        alert("Chore added locally. Note: Database sync failed, but chore is visible for this session.");
+      }
 
-      setNewChoreName("")
+      setNewChoreName("");
     } catch (error) {
-      console.error("Error adding chore:", error)
+      console.error("Error adding chore:", error);
+      alert("Failed to add chore. Please check the console for details.");
     }
   }
 
