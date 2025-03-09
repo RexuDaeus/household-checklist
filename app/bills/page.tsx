@@ -288,10 +288,6 @@ export default function BillsPage() {
     )
   }
 
-  const togglePayee = (payeeId: string) => {
-    setNewBillPayee(prev => prev === payeeId ? "" : payeeId);
-  }
-
   const getAmountPerPerson = (amount: number, payersCount: number) => {
     if (payersCount === 0) return "0.00"
     return (amount / payersCount).toFixed(2)
@@ -409,40 +405,19 @@ export default function BillsPage() {
             <div className="space-y-2">
               <Label>Select Payee</Label>
               <p className="text-sm text-muted-foreground mb-2">
-                Select who the bill is paid to (only one selection allowed)
+                Select who the bill is paid to
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`payee-${currentUser.id}`}
-                    checked={newBillPayee === currentUser.id}
-                    onCheckedChange={() => togglePayee(currentUser.id)}
-                    className="sumikko-checkbox"
-                  />
-                  <Label 
-                    htmlFor={`payee-${currentUser.id}`}
-                    className="text-sm font-medium"
-                  >
-                    {currentUser.username} (You)
-                  </Label>
-                </div>
-                {users.map((user) => (
-                  <div key={user.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`payee-${user.id}`}
-                      checked={newBillPayee === user.id}
-                      onCheckedChange={() => togglePayee(user.id)}
-                      className="sumikko-checkbox"
-                    />
-                    <Label 
-                      htmlFor={`payee-${user.id}`}
-                      className="text-sm font-medium"
-                    >
-                      {user.username}
-                    </Label>
-                  </div>
+              <select 
+                className="sumikko-input w-full p-2 rounded-md border border-input"
+                value={newBillPayee}
+                onChange={(e) => setNewBillPayee(e.target.value)}
+              >
+                <option value="">Select a payee</option>
+                <option value={currentUser.id}>{currentUser.username} (You)</option>
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>{user.username}</option>
                 ))}
-              </div>
+              </select>
             </div>
             <div className="space-y-2">
               <Label>Select Payers</Label>
@@ -527,44 +502,20 @@ export default function BillsPage() {
                               />
                               <div className="space-y-2">
                                 <Label>Select Payee (Edit)</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id={`edit-payee-${currentUser.id}`}
-                                      checked={editFormData.payee === currentUser.id}
-                                      onCheckedChange={() => setEditFormData({
-                                        ...editFormData,
-                                        payee: editFormData.payee === currentUser.id ? "" : currentUser.id
-                                      })}
-                                      className="sumikko-checkbox"
-                                    />
-                                    <Label 
-                                      htmlFor={`edit-payee-${currentUser.id}`}
-                                      className="text-sm font-medium"
-                                    >
-                                      {currentUser.username} (You)
-                                    </Label>
-                                  </div>
-                                  {users.map((user) => (
-                                    <div key={user.id} className="flex items-center space-x-2">
-                                      <Checkbox
-                                        id={`edit-payee-${user.id}`}
-                                        checked={editFormData.payee === user.id}
-                                        onCheckedChange={() => setEditFormData({
-                                          ...editFormData,
-                                          payee: editFormData.payee === user.id ? "" : user.id
-                                        })}
-                                        className="sumikko-checkbox"
-                                      />
-                                      <Label 
-                                        htmlFor={`edit-payee-${user.id}`}
-                                        className="text-sm font-medium"
-                                      >
-                                        {user.username}
-                                      </Label>
-                                    </div>
+                                <select 
+                                  className="w-full p-2 rounded-md border border-input"
+                                  value={editFormData.payee}
+                                  onChange={(e) => setEditFormData({
+                                    ...editFormData,
+                                    payee: e.target.value
+                                  })}
+                                >
+                                  <option value="">Select a payee</option>
+                                  <option value={currentUser.id}>{currentUser.username} (You)</option>
+                                  {users.map(user => (
+                                    <option key={user.id} value={user.id}>{user.username}</option>
                                   ))}
-                                </div>
+                                </select>
                               </div>
                               <Input
                                 type="number"
@@ -604,12 +555,14 @@ export default function BillsPage() {
                                   <span className="text-base">{bill.title}</span>
                                   <span className="ml-2 text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                 </div>
-                                <div className="text-sm text-muted-foreground mt-1">
-                                  <span className="font-medium">Per person: </span>
-                                  <span className="font-semibold">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  Received on: {format(new Date(bill.due_date), "PPP")}
+                                <div className="flex justify-between mt-2">
+                                  <div className="text-muted-foreground">
+                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Per person: </span>
+                                    <span className="text-base font-medium">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                  </div>
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
@@ -668,44 +621,20 @@ export default function BillsPage() {
                               />
                               <div className="space-y-2">
                                 <Label>Select Payee (Edit)</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id={`edit-payee-${currentUser.id}`}
-                                      checked={editFormData.payee === currentUser.id}
-                                      onCheckedChange={() => setEditFormData({
-                                        ...editFormData,
-                                        payee: editFormData.payee === currentUser.id ? "" : currentUser.id
-                                      })}
-                                      className="sumikko-checkbox"
-                                    />
-                                    <Label 
-                                      htmlFor={`edit-payee-${currentUser.id}`}
-                                      className="text-sm font-medium"
-                                    >
-                                      {currentUser.username} (You)
-                                    </Label>
-                                  </div>
-                                  {users.map((user) => (
-                                    <div key={user.id} className="flex items-center space-x-2">
-                                      <Checkbox
-                                        id={`edit-payee-${user.id}`}
-                                        checked={editFormData.payee === user.id}
-                                        onCheckedChange={() => setEditFormData({
-                                          ...editFormData,
-                                          payee: editFormData.payee === user.id ? "" : user.id
-                                        })}
-                                        className="sumikko-checkbox"
-                                      />
-                                      <Label 
-                                        htmlFor={`edit-payee-${user.id}`}
-                                        className="text-sm font-medium"
-                                      >
-                                        {user.username}
-                                      </Label>
-                                    </div>
+                                <select 
+                                  className="w-full p-2 rounded-md border border-input"
+                                  value={editFormData.payee}
+                                  onChange={(e) => setEditFormData({
+                                    ...editFormData,
+                                    payee: e.target.value
+                                  })}
+                                >
+                                  <option value="">Select a payee</option>
+                                  <option value={currentUser.id}>{currentUser.username} (You)</option>
+                                  {users.map(user => (
+                                    <option key={user.id} value={user.id}>{user.username}</option>
                                   ))}
-                                </div>
+                                </select>
                               </div>
                               <Input
                                 type="number"
@@ -745,8 +674,10 @@ export default function BillsPage() {
                                   <span className="text-base">{bill.title}</span>
                                   <span className="ml-2 text-lg font-semibold text-secondary-foreground">${bill.amount.toFixed(2)}</span>
                                 </div>
-                                <div className="text-sm text-muted-foreground mt-1">
-                                  Received on: {format(new Date(bill.due_date), "PPP")}
+                                <div className="flex justify-between mt-2">
+                                  <div className="text-muted-foreground">
+                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                  </div>
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
@@ -784,7 +715,7 @@ export default function BillsPage() {
 
         {/* Other Bills (where others are the payee) */}
         {Object.keys(otherBillsByPayee).length > 0 && (
-          <div className="bg-primary/5 p-6 rounded-lg border border-primary/20">
+          <div>
             <h2 className="text-2xl font-bold mb-4">
               Money You Owe to Others
               <span className="ml-2 text-base font-medium text-muted-foreground">
@@ -831,44 +762,20 @@ export default function BillsPage() {
                               />
                               <div className="space-y-2">
                                 <Label>Select Payee (Edit)</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id={`edit-payee-${currentUser.id}`}
-                                      checked={editFormData.payee === currentUser.id}
-                                      onCheckedChange={() => setEditFormData({
-                                        ...editFormData,
-                                        payee: editFormData.payee === currentUser.id ? "" : currentUser.id
-                                      })}
-                                      className="sumikko-checkbox"
-                                    />
-                                    <Label 
-                                      htmlFor={`edit-payee-${currentUser.id}`}
-                                      className="text-sm font-medium"
-                                    >
-                                      {currentUser.username} (You)
-                                    </Label>
-                                  </div>
-                                  {users.map((user) => (
-                                    <div key={user.id} className="flex items-center space-x-2">
-                                      <Checkbox
-                                        id={`edit-payee-${user.id}`}
-                                        checked={editFormData.payee === user.id}
-                                        onCheckedChange={() => setEditFormData({
-                                          ...editFormData,
-                                          payee: editFormData.payee === user.id ? "" : user.id
-                                        })}
-                                        className="sumikko-checkbox"
-                                      />
-                                      <Label 
-                                        htmlFor={`edit-payee-${user.id}`}
-                                        className="text-sm font-medium"
-                                      >
-                                        {user.username}
-                                      </Label>
-                                    </div>
+                                <select 
+                                  className="w-full p-2 rounded-md border border-input"
+                                  value={editFormData.payee}
+                                  onChange={(e) => setEditFormData({
+                                    ...editFormData,
+                                    payee: e.target.value
+                                  })}
+                                >
+                                  <option value="">Select a payee</option>
+                                  <option value={currentUser.id}>{currentUser.username} (You)</option>
+                                  {users.map(user => (
+                                    <option key={user.id} value={user.id}>{user.username}</option>
                                   ))}
-                                </div>
+                                </select>
                               </div>
                               <Input
                                 type="number"
@@ -906,16 +813,18 @@ export default function BillsPage() {
                               <div className="flex-grow">
                                 <div className="font-medium flex items-baseline justify-between">
                                   <span className="text-base">{bill.title}</span>
-                                  <div>
-                                    <span className="text-muted-foreground text-xs">Total: </span>
-                                    <span className="text-sm text-muted-foreground">${bill.amount.toFixed(2)}</span>
+                                  <div className="text-base font-semibold mt-1 text-primary-foreground">
+                                    Your share: <span className="text-lg">${getPerPersonTotal(bill)}</span>
                                   </div>
                                 </div>
-                                <div className="text-base font-semibold mt-1 text-primary-foreground">
-                                  Your share: <span className="text-lg">${getPerPersonTotal(bill)}</span>
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  Received on: {format(new Date(bill.due_date), "PPP")}
+                                <div className="flex justify-between mt-2">
+                                  <div className="text-muted-foreground">
+                                    Received on: {format(new Date(bill.due_date), "PPP")}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Total: </span>
+                                    <span className="text-base font-medium">${bill.amount.toFixed(2)}</span>
+                                  </div>
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   Created by: {getUsernameById(bill.created_by)}
