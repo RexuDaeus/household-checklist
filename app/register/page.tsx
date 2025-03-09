@@ -156,12 +156,12 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="name">Name</Label>
                 <Input
-                  id="username"
+                  id="name"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Choose a username"
+                  placeholder="Enter your name"
                   disabled={isLoading}
                 />
               </div>

@@ -104,7 +104,7 @@ export function SumikkoHeader({
                     </span>
                   </div>
                   <span className="text-sm font-medium">
-                    Welcome, {username}
+                    Hi, {username}
                   </span>
                 </button>
                 {showBackButton && (

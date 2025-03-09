@@ -138,21 +138,21 @@ export default function AccountPage() {
               </div>
             )}
             
-            {/* Username Section */}
+            {/* Name Section */}
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-semibold">Change Username</h3>
+                <h3 className="text-lg font-semibold">Change Name</h3>
                 <p className="text-sm text-muted-foreground">
-                  Your current username is: {currentUser.username}
+                  Your current name is: {currentUser.username}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="username">New Username</Label>
+                <Label htmlFor="name">New Name</Label>
                 <Input
-                  id="username"
+                  id="name"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="Enter new username"
+                  placeholder="Enter new name"
                 />
               </div>
               <Button
@@ -162,7 +162,7 @@ export default function AccountPage() {
                 {isSaving ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</>
                 ) : (
-                  "Update Username"
+                  "Update Name"
                 )}
               </Button>
             </div>
