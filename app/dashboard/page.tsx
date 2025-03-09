@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SumikkoHeader } from "@/components/sumikko-header"
 import { getUserFromCookie } from "@/lib/auth"
+import { Link } from "react-router-dom"
 
 export default function Dashboard() {
   const [username, setUsername] = useState("")
