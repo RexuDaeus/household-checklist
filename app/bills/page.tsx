@@ -12,6 +12,8 @@ import { SumikkoCard } from "@/components/sumikko-card"
 import { supabase } from "@/lib/supabase"
 import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
+import { useGuest } from "@/lib/guest-context"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
@@ -37,11 +39,40 @@ export default function BillsPage() {
     due_date: ""
   })
   const router = useRouter()
+  const { isGuest } = useGuest()
 
   useEffect(() => {
     async function loadData() {
       try {
-        // Get current user session
+        setIsLoading(true)
+        
+        // For guest mode, load data without requiring auth
+        if (isGuest) {
+          // Get all users
+          const { data: fetchedUsers } = await supabase
+            .from("profiles")
+            .select("*")
+
+          if (fetchedUsers) {
+            setAllUsers(fetchedUsers);
+            setUsers(fetchedUsers);
+          }
+
+          // Get all bills
+          const { data: allBills } = await supabase
+            .from("bills")
+            .select("*")
+            .order("created_at", { ascending: false })
+
+          if (allBills) {
+            setBills(allBills)
+          }
+
+          setIsLoading(false)
+          return
+        }
+
+        // For authenticated users, proceed with normal flow
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
           router.push("/login")
@@ -358,115 +389,128 @@ export default function BillsPage() {
       <SumikkoHeader showBackButton />
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
-        <SumikkoCard
-          title="Add New Bill"
-          subtitle="Create a new bill and select who needs to pay"
-        >
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="billName">Bill Name</Label>
-              <Input
-                id="billName"
-                className="sumikko-input"
-                value={newBillName}
-                onChange={(e) => setNewBillName(e.target.value)}
-                placeholder="Enter bill name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="amount">Total Amount ($)</Label>
-              <Input
-                id="amount"
-                className="sumikko-input"
-                type="number"
-                step="0.01"
-                min="0"
-                value={newBillAmount}
-                onChange={(e) => setNewBillAmount(e.target.value)}
-                placeholder="Enter total amount"
-              />
-              {newBillAmount && selectedPayers.length >= 0 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length)} each
-                  (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billDate">Bill Date</Label>
-              <Input
-                id="billDate"
-                className="sumikko-input"
-                type="date"
-                value={newBillDate}
-                onChange={(e) => setNewBillDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Select Payee</Label>
-              <p className="text-sm text-muted-foreground mb-2">
-                Select who the bill is paid to
-              </p>
-              <select 
-                className="sumikko-input w-full p-2 rounded-md border border-input"
-                value={newBillPayee}
-                onChange={(e) => setNewBillPayee(e.target.value)}
-              >
-                <option value="">Select a payee</option>
-                <option value={currentUser.id}>{currentUser.username} (You)</option>
-                {users.map(user => (
-                  <option key={user.id} value={user.id}>{user.username}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Select Payers</Label>
-              <p className="text-sm text-muted-foreground mb-2">
-                Select who needs to pay this bill (including yourself if applicable)
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`payer-${currentUser.id}`}
-                    checked={selectedPayers.includes(currentUser.id)}
-                    onCheckedChange={() => togglePayer(currentUser.id)}
-                    className="sumikko-checkbox"
-                  />
-                  <Label 
-                    htmlFor={`payer-${currentUser.id}`}
-                    className="text-sm font-medium"
-                  >
-                    {currentUser.username} (You)
-                  </Label>
-                </div>
-                {users.map((user) => (
-                  <div key={user.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`payer-${user.id}`}
-                      checked={selectedPayers.includes(user.id)}
-                      onCheckedChange={() => togglePayer(user.id)}
-                      className="sumikko-checkbox"
-                    />
-                    <Label 
-                      htmlFor={`payer-${user.id}`}
-                      className="text-sm font-medium"
-                    >
-                      {user.username}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <Button 
-              className="w-full sumikko-button"
-              onClick={handleNewBill}
-              disabled={!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Bill
-            </Button>
+        {isGuest && (
+          <div className="bg-muted p-4 rounded-lg mb-4">
+            <p className="text-center text-muted-foreground">
+              You are in guest mode. You can view bills but cannot edit or add new ones.
+            </p>
           </div>
-        </SumikkoCard>
+        )}
+        
+        {!isGuest && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Add New Bill</CardTitle>
+              <CardDescription>Create a new bill to track household expenses</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="billName">Bill Name</Label>
+                  <Input
+                    id="billName"
+                    className="sumikko-input"
+                    value={newBillName}
+                    onChange={(e) => setNewBillName(e.target.value)}
+                    placeholder="Enter bill name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Total Amount ($)</Label>
+                  <Input
+                    id="amount"
+                    className="sumikko-input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newBillAmount}
+                    onChange={(e) => setNewBillAmount(e.target.value)}
+                    placeholder="Enter total amount"
+                  />
+                  {newBillAmount && selectedPayers.length >= 0 && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      ${getAmountPerPerson(parseFloat(newBillAmount), selectedPayers.length)} each
+                      (split between {selectedPayers.length} payer{selectedPayers.length !== 1 ? 's' : ''})
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="billDate">Bill Date</Label>
+                  <Input
+                    id="billDate"
+                    className="sumikko-input"
+                    type="date"
+                    value={newBillDate}
+                    onChange={(e) => setNewBillDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Select Payee</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Select who the bill is paid to
+                  </p>
+                  <select 
+                    className="sumikko-input w-full p-2 rounded-md border border-input"
+                    value={newBillPayee}
+                    onChange={(e) => setNewBillPayee(e.target.value)}
+                  >
+                    <option value="">Select a payee</option>
+                    <option value={currentUser.id}>{currentUser.username} (You)</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>{user.username}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Select Payers</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Select who needs to pay this bill (including yourself if applicable)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`payer-${currentUser.id}`}
+                        checked={selectedPayers.includes(currentUser.id)}
+                        onCheckedChange={() => togglePayer(currentUser.id)}
+                        className="sumikko-checkbox"
+                      />
+                      <Label 
+                        htmlFor={`payer-${currentUser.id}`}
+                        className="text-sm font-medium"
+                      >
+                        {currentUser.username} (You)
+                      </Label>
+                    </div>
+                    {users.map((user) => (
+                      <div key={user.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`payer-${user.id}`}
+                          checked={selectedPayers.includes(user.id)}
+                          onCheckedChange={() => togglePayer(user.id)}
+                          className="sumikko-checkbox"
+                        />
+                        <Label 
+                          htmlFor={`payer-${user.id}`}
+                          className="text-sm font-medium"
+                        >
+                          {user.username}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Button 
+                  className="w-full sumikko-button"
+                  onClick={handleNewBill}
+                  disabled={!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Bill
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Your Bills (where you are the payee) */}
         {myBillsAsPayee.length > 0 && (
