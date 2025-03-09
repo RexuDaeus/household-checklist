@@ -21,6 +21,7 @@ export default function ArchivedBillsPage() {
   useEffect(() => {
     async function loadData() {
       try {
+        console.log("Loading archived bills...");
         // Get current user session
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
@@ -37,6 +38,7 @@ export default function ArchivedBillsPage() {
 
         if (profile) {
           setCurrentUser(profile)
+          console.log("Current user:", profile);
 
           // Get all users
           const { data: fetchedUsers } = await supabase
@@ -47,42 +49,50 @@ export default function ArchivedBillsPage() {
             setAllUsers(fetchedUsers)
           }
 
-          // First, check if the archived_bills table exists
-          const { error: tableError } = await supabase
-            .from('archived_bills')
-            .select('count')
-            .limit(1)
-            .single();
-
-          // If the table doesn't exist or there's an error, we need to create it
-          if (tableError) {
-            console.error("Error checking archived_bills table:", tableError);
-            alert("The archived_bills table may not exist. Please run the SQL script to create it.");
-            setIsLoading(false);
-            return;
+          // First, check if the archived_bills table exists by listing tables
+          const { data: tableList, error: tableListError } = await supabase
+            .from('pg_tables')
+            .select('tablename')
+            .eq('schemaname', 'public');
+            
+          if (tableListError) {
+            console.error("Error checking tables:", tableListError);
+          } else {
+            console.log("Available tables:", tableList);
           }
 
-          // Get archived bills where user is creator or was a payer
+          // Attempt to get archived bills
+          console.log("Querying archived bills...");
           const { data: archivedBillsData, error: queryError } = await supabase
             .from("archived_bills")
-            .select("*")
-            .or(`payer_id.eq.${session.user.id},bill_data->>'created_by'.eq.${session.user.id}`)
-            .order("archived_at", { ascending: false });
-
+            .select("*");
+            
           if (queryError) {
             console.error("Error fetching archived bills:", queryError);
-            alert("Failed to load archived bills.");
+            alert("Error fetching archived bills: " + queryError.message);
             setIsLoading(false);
             return;
           }
+          
+          console.log("Raw archived bills data:", archivedBillsData);
 
           if (archivedBillsData && archivedBillsData.length > 0) {
+            // Now filter for the user's bills
+            const userBills = archivedBillsData.filter(
+              record => record.payer_id === session.user.id || 
+                        (record.bill_data && record.bill_data.created_by === session.user.id)
+            );
+            
+            console.log("User's archived bills:", userBills);
+            
             // Extract the bill_data from each archived bill record and add the record id
-            const bills = archivedBillsData.map(record => ({
+            const bills = userBills.map(record => ({
               ...record.bill_data as Bill,
               archived_record_id: record.id,
               payer_id: record.payer_id
             }));
+            
+            console.log("Processed bills for display:", bills);
             setArchivedBills(bills);
           } else {
             console.log("No archived bills found");

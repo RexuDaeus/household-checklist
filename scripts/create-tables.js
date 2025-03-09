@@ -11,20 +11,33 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Run the SQL query
+// Run the SQL query using REST API
 async function createTables() {
   console.log('Creating archived_bills table...');
   
-  const { data, error } = await supabase.rpc('pgdump_exec', { 
-    query: archivedBillsSQL 
-  });
-  
-  if (error) {
+  try {
+    // Split the SQL into separate statements
+    const statements = archivedBillsSQL
+      .split(';')
+      .map(statement => statement.trim())
+      .filter(statement => statement.length > 0);
+    
+    // Execute each statement individually
+    for (const statement of statements) {
+      const { error } = await supabase.rpc('pg_query', { query: statement });
+      
+      if (error) {
+        console.error(`Error executing statement: ${statement}`);
+        console.error(error);
+      } else {
+        console.log(`Successfully executed: ${statement.substring(0, 50)}...`);
+      }
+    }
+    
+    console.log('Tables created successfully!');
+  } catch (error) {
     console.error('Error creating tables:', error);
-    return;
   }
-  
-  console.log('Tables created successfully!');
 }
 
 createTables(); 

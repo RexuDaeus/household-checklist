@@ -209,53 +209,45 @@ export default function BillsPage() {
     // Only allow the creator to delete the bill
     if (!billToDelete || billToDelete.created_by !== currentUser?.id) return;
   
+    // Confirm deletion with the user
+    if (!window.confirm(`Are you sure you want to delete "${billToDelete.title}"?`)) {
+      return; // User canceled the deletion
+    }
+
     try {
-      // If payerId is specified, we're just removing a specific payer
-      // Otherwise, delete the entire bill
-      if (payerId) {
-        // Get updated payers array without the specified payer
-        const updatedPayers = billToDelete.payers.filter(p => p !== payerId);
-        
-        // Update UI optimistically
-        setBills(prevBills => prevBills.map(bill => 
-          bill.id === id ? { ...bill, payers: updatedPayers } : bill
-        ));
-        
-        console.log(`Optimistically removed payer ${payerId} from bill ${id}`);
-        
-        // Update database
-        const { error } = await supabase
-          .from("bills")
-          .update({ payers: updatedPayers })
-          .eq("id", id);
+      // We're specifically deleting the entire bill now, not just removing a payer
+      // regardless of whether payerId is provided
+      
+      // Update UI optimistically
+      setBills(prevBills => prevBills.filter(b => b.id !== id));
+      
+      console.log(`Optimistically deleted bill ${id}`);
+      
+      // Delete from database
+      const { error } = await supabase
+        .from("bills")
+        .delete()
+        .eq("id", id);
   
-        if (error) {
-          console.error("Error removing payer from bill:", error);
-          alert("Failed to update on the server. The changes may revert if you reload.");
-        } else {
-          console.log("Successfully removed payer from bill in database");
+      if (error) {
+        console.error("Error deleting bill:", error);
+        alert("Failed to delete bill on the server. The bill may reappear if you reload.");
+        
+        // Revert the UI update if there was an error
+        const { data } = await supabase
+          .from("bills")
+          .select("*")
+          .eq("id", id);
+          
+        if (data && data.length > 0) {
+          setBills(prevBills => [...prevBills, data[0]]);
         }
       } else {
-        // Update UI optimistically
-        setBills(prevBills => prevBills.filter(bill => bill.id !== id));
-        
-        console.log(`Optimistically deleted bill ${id}`);
-        
-        // Delete from database
-        const { error } = await supabase
-          .from("bills")
-          .delete()
-          .eq("id", id);
-    
-        if (error) {
-          console.error("Error deleting bill:", error);
-          alert("Failed to delete on the server. The item may reappear if you reload.");
-        } else {
-          console.log("Successfully deleted bill from database");
-        }
+        console.log("Successfully deleted bill");
       }
     } catch (error) {
       console.error("Error deleting bill:", error);
+      alert("An unexpected error occurred while deleting the bill.");
     }
   }
 
@@ -326,6 +318,8 @@ export default function BillsPage() {
     if (!bill || bill.created_by !== currentUser?.id) return;
     
     try {
+      console.log("Archiving bill:", bill, "payer:", payerId);
+      
       // Create a copy of the bill with only this payer
       const archivedBill = { 
         ...bill, 
@@ -334,20 +328,23 @@ export default function BillsPage() {
       };
       
       // Add to archived_bills table
-      const { error: archiveError } = await supabase
+      const { data: archivedData, error: archiveError } = await supabase
         .from("archived_bills")
         .insert([{
           original_bill_id: billId,
           payer_id: payerId,
           bill_data: archivedBill,
           archived_at: new Date().toISOString()
-        }]);
+        }])
+        .select();
 
       if (archiveError) {
         console.error("Error archiving bill:", archiveError);
-        alert("Failed to archive bill on the server.");
+        alert("Failed to archive bill: " + archiveError.message);
         return;
       }
+      
+      console.log("Successfully archived bill, archived record:", archivedData);
 
       // Remove this payer from the original bill
       const updatedPayers = bill.payers.filter(p => p !== payerId);
@@ -387,6 +384,7 @@ export default function BillsPage() {
       }
     } catch (error) {
       console.error("Error marking bill as paid:", error);
+      alert("An unexpected error occurred while archiving the bill.");
     }
   };
 
@@ -515,13 +513,14 @@ export default function BillsPage() {
     <div className="min-h-screen">
       <div className="flex justify-between items-center max-w-7xl mx-auto px-4 py-2">
         <SumikkoHeader showBackButton />
-        <Button 
-          variant="outline"
-          onClick={() => router.push("/bills/archive")}
-          className="ml-auto"
-        >
-          View Archived Bills
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button 
+            variant="outline"
+            onClick={() => router.push("/bills/archive")}
+          >
+            View Archived Bills
+          </Button>
+        </div>
       </div>
       
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-10">
