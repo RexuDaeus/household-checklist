@@ -9,6 +9,7 @@ import { SumikkoHeader } from "@/components/sumikko-header"
 import { getUserFromCookie } from "@/lib/auth"
 import { supabase, Profile } from "@/lib/supabase"
 import { ProfileAvatar } from "@/components/profile-avatar"
+import { UserDisplay } from "@/components/user-display"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,7 @@ type KeyHolder = {
   userId: string;
   username: string;
   hasKey: boolean;
+  profile?: Profile;
 };
 
 type OtherKeyHolder = {
@@ -71,11 +73,12 @@ export default function Dashboard() {
             if (allUsers) {
               setUsers(allUsers)
               
-              // Initialize key holders from all users
+              // Initialize key holders from all users with full profiles
               const initialKeyHolders = allUsers.map(user => ({
                 userId: user.id,
                 username: user.username,
-                hasKey: false
+                hasKey: false,
+                profile: user
               }));
               
               setKeyHolders(initialKeyHolders)
@@ -422,7 +425,16 @@ export default function Dashboard() {
                       onCheckedChange={() => toggleKeyHolder(keyHolder.userId)}
                     />
                     <Label htmlFor={`key-holder-${keyHolder.userId}`}>
-                      {keyHolder.username} {userProfile?.id === keyHolder.userId && "(You)"}
+                      {keyHolder.profile ? (
+                        <UserDisplay 
+                          user={{
+                            ...keyHolder.profile,
+                            is_current_user: userProfile?.id === keyHolder.userId
+                          }}
+                        />
+                      ) : (
+                        <>{keyHolder.username} {userProfile?.id === keyHolder.userId && "(You)"}</>
+                      )}
                     </Label>
                   </div>
                 ))}
@@ -454,7 +466,16 @@ export default function Dashboard() {
                   
                   {keyHolders.filter(kh => kh.hasKey).map(kh => (
                     <li key={kh.userId} className="text-secondary-foreground">
-                      {kh.username} {userProfile?.id === kh.userId && "(You)"}
+                      {kh.profile ? (
+                        <UserDisplay 
+                          user={{
+                            ...kh.profile,
+                            is_current_user: userProfile?.id === kh.userId
+                          }}
+                        />
+                      ) : (
+                        <>{kh.username} {userProfile?.id === kh.userId && "(You)"}</>
+                      )}
                     </li>
                   ))}
                   

@@ -39,7 +39,6 @@ export function EmojiPicker({ user, onEmojiSelect }: EmojiPickerProps) {
   const [selectedEmoji, setSelectedEmoji] = useState(user?.profile_picture_url || "😊");
   const [currentCategory, setCurrentCategory] = useState<keyof typeof EMOJI_SETS>("faces");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   
   const handleSelect = async (emoji: string) => {
     setSelectedEmoji(emoji);
@@ -59,11 +58,6 @@ export function EmojiPicker({ user, onEmojiSelect }: EmojiPickerProps) {
       setIsSubmitting(false);
     }
   };
-  
-  // Filter emojis by search query if one exists
-  const filteredEmojis = searchQuery.trim() 
-    ? Object.values(EMOJI_SETS).flat().filter(emoji => emoji.includes(searchQuery))
-    : EMOJI_SETS[currentCategory];
   
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -96,33 +90,22 @@ export function EmojiPicker({ user, onEmojiSelect }: EmojiPickerProps) {
             </div>
           </div>
           
-          <div className="mb-4">
-            <Input
-              placeholder="Search emojis..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full"
-            />
+          <div className="flex flex-wrap gap-1 mb-4">
+            {(Object.keys(EMOJI_SETS) as Array<keyof typeof EMOJI_SETS>).map(category => (
+              <Button 
+                key={category} 
+                variant={currentCategory === category ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCurrentCategory(category)}
+                className="capitalize text-xs"
+              >
+                {category}
+              </Button>
+            ))}
           </div>
           
-          {!searchQuery && (
-            <div className="flex flex-wrap gap-1 mb-4">
-              {(Object.keys(EMOJI_SETS) as Array<keyof typeof EMOJI_SETS>).map(category => (
-                <Button 
-                  key={category} 
-                  variant={currentCategory === category ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentCategory(category)}
-                  className="capitalize text-xs"
-                >
-                  {category}
-                </Button>
-              ))}
-            </div>
-          )}
-          
           <div className="grid grid-cols-6 gap-2 p-2 border rounded-md h-52 overflow-y-auto">
-            {filteredEmojis.map(emoji => (
+            {EMOJI_SETS[currentCategory].map(emoji => (
               <button
                 key={emoji}
                 onClick={() => handleSelect(emoji)}

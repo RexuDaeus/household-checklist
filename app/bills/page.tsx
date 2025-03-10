@@ -722,6 +722,12 @@ export default function BillsPage() {
     delete otherBillsByPayee[currentUser.id];
   }
 
+  // Additional logic to find bills where the user is a payer but not in any existing groups
+  const billsWhereUserIsPayer = bills.filter(bill => 
+    bill.payers.includes(currentUser.id) && 
+    bill.payee !== currentUser.id
+  );
+
   // Calculate per person total for a bill
   const getPerPersonTotal = (bill: Bill): string => {
     return getAmountPerPerson(bill.amount, bill.payers.length);
@@ -1116,20 +1122,32 @@ export default function BillsPage() {
         )}
 
         {/* Other Bills (where others are the payee) */}
-        {Object.keys(otherBillsByPayee).length > 0 && (
+        {(Object.keys(otherBillsByPayee).length > 0 || billsWhereUserIsPayer.length > 0) && (
           <div>
             <h2 className="text-2xl font-bold mb-4">
               Money You Owe to Others
               <span className="ml-2 text-lg font-semibold text-primary">
                 ${Object.values(otherBillsByPayee).reduce((total, bills) => {
                   return total + bills.reduce((subtotal, bill) => {
-                    return subtotal + parseFloat(getPerPersonTotal(bill));
+                    // Only include this bill in the total if the current user is a payer
+                    if (bill.payers.includes(currentUser.id)) {
+                      return subtotal + parseFloat(getPerPersonTotal(bill));
+                    }
+                    return subtotal;
                   }, 0);
                 }, 0).toFixed(2)}
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-auto" id="other-bills-masonry-grid">
               {Object.entries(otherBillsByPayee).map(([payee, payeeBills]) => {
+                // Filter bills to only show those where the current user is a payer
+                const relevantBills = payeeBills.filter(bill => bill.payers.includes(currentUser.id));
+                
+                // Skip this payee if there are no relevant bills
+                if (relevantBills.length === 0) {
+                  return null;
+                }
+                
                 // Find the user name if payee is a user ID
                 let payeeDisplayName = payee;
                 if (payee !== "Unspecified") {
@@ -1140,12 +1158,12 @@ export default function BillsPage() {
                 }
                 
                 // Calculate the per-person total for this group of bills
-                const perPersonTotal = payeeBills.reduce((sum, bill) => {
+                const perPersonTotal = relevantBills.reduce((sum, bill) => {
                   return sum + parseFloat(getPerPersonTotal(bill));
                 }, 0).toFixed(2);
                 
                 // Group bills by date like in the "Money Owed to You" section
-                const billsByDate = groupBillsByDate(payeeBills);
+                const billsByDate = groupBillsByDate(relevantBills);
                 
                 return (
                   <div key={payee} className="h-fit bill-card">
@@ -1155,7 +1173,7 @@ export default function BillsPage() {
                           <div>Owed to {getUserDisplayElement(payee)}</div>
                         </div>
                       }
-                      titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {payeeBills.length} bill{payeeBills.length !== 1 ? 's' : ''}</span>}
+                      titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {relevantBills.length} bill{relevantBills.length !== 1 ? 's' : ''}</span>}
                     >
                       <ul className="space-y-4">
                         {Object.entries(billsByDate).map(([dateKey, dateBills]) => (
