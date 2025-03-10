@@ -416,6 +416,12 @@ export default function ArchivedBillsPage() {
                           <div className="text-muted-foreground">
                             Paid on: {format(new Date(bill.archived_at || bill.created_at), "PPP")}
                           </div>
+                          {bill.notes && (
+                            <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
+                              <span className="font-semibold">Notes: </span>
+                              {bill.notes}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                           <Button

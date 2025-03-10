@@ -14,63 +14,74 @@ import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
 import React from "react"
 
-// Completely rewrite the masonry arrangement function for better card placement
+// Implement a proper masonry layout that actually works
 function arrangeGridItems(gridId: string) {
   if (typeof window === 'undefined') return;
   
   const grid = document.getElementById(gridId);
   if (!grid) return;
   
-  // Only apply masonry layout on medium and larger screens
+  // On small screens use a single column
   if (window.innerWidth < 768) {
-    grid.style.gridTemplateColumns = '1fr';
+    grid.style.display = 'block';
     return;
   }
-
+  
   // Get all cards
   const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
   if (cards.length <= 1) return;
   
-  // Reset grid
+  // Set up a two-column grid
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
   grid.style.gap = '1.5rem';
+  grid.style.alignItems = 'start';
   
-  // First, reset all cards to their natural positioning
+  // First, reset position and make all cards visible
   cards.forEach(card => {
-    card.style.gridRow = 'auto';
-    card.style.gridColumn = 'auto';
+    card.style.gridColumn = '';
+    card.style.gridRow = '';
+    card.style.opacity = '1';
+    card.style.position = '';
+    card.style.top = '';
+    card.style.left = '';
   });
   
-  // Force layout calculation to get heights
+  // Force browser to calculate card heights
   cards.forEach(card => card.offsetHeight);
   
-  // Sort cards by height, then place them in a true masonry layout
-  // This ensures shorter cards are placed below taller ones in the same column
-  let leftColHeight = 0;
-  let rightColHeight = 0;
+  // Use a simpler approach - use absolute positioning 
+  // to create a true masonry layout
+  grid.style.position = 'relative';
+  grid.style.height = '2000px'; // Temporary height
   
-  // Sort cards by height (tallest first) for better layout
-  const sortedCards = [...cards].sort((a, b) => b.offsetHeight - a.offsetHeight);
+  let leftColTop = 0;
+  let rightColTop = 0;
+  const gapSize = 24; // 1.5rem in pixels
+  const columnWidth = (grid.clientWidth - gapSize) / 2;
   
-  // Place cards in columns based on minimum height
-  sortedCards.forEach((card, index) => {
-    if (index === 0) {
-      // First card always goes in the left column
-      card.style.gridColumn = '1';
-      card.style.gridRow = '1';
-      leftColHeight = card.offsetHeight;
+  cards.forEach((card, index) => {
+    card.style.position = 'absolute';
+    card.style.width = `${columnWidth}px`;
+    
+    // Determine which column to place the card in
+    if (leftColTop <= rightColTop) {
+      // Place in left column
+      card.style.left = '0';
+      card.style.top = `${leftColTop}px`;
+      // Update left column height
+      leftColTop += card.offsetHeight + gapSize;
     } else {
-      // Choose the column with less height
-      if (leftColHeight <= rightColHeight) {
-        card.style.gridColumn = '1';
-        leftColHeight += card.offsetHeight;
-      } else {
-        card.style.gridColumn = '2';
-        rightColHeight += card.offsetHeight;
-      }
+      // Place in right column
+      card.style.left = `${columnWidth + gapSize}px`;
+      card.style.top = `${rightColTop}px`;
+      // Update right column height
+      rightColTop += card.offsetHeight + gapSize;
     }
   });
+  
+  // Set the grid's height to the height of the tallest column
+  grid.style.height = `${Math.max(leftColTop, rightColTop)}px`;
 }
 
 export default function BillsPage() {
@@ -127,16 +138,25 @@ export default function BillsPage() {
       return;
     }
     
-    // Initial layout after a short delay to let the DOM render
-    const timer = setTimeout(applyMasonryLayout, 500);
+    // Apply masonry layout after a short delay to allow DOM to render
+    const timer = setTimeout(() => {
+      applyMasonryLayout();
+      
+      // Apply again after images might have loaded
+      const imageTimer = setTimeout(applyMasonryLayout, 1000);
+      return () => clearTimeout(imageTimer);
+    }, 200);
     
-    // Apply layout on window resize
-    window.addEventListener('resize', applyMasonryLayout);
+    // Also apply layout on window resize
+    const handleResize = () => {
+      applyMasonryLayout();
+    };
+    window.addEventListener('resize', handleResize);
     
     // Clean up
     return () => {
       clearTimeout(timer);
-      window.removeEventListener('resize', applyMasonryLayout);
+      window.removeEventListener('resize', handleResize);
     };
   }, [isLoading, applyMasonryLayout]);
 
