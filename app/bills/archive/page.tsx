@@ -8,7 +8,17 @@ import { SumikkoCard } from "@/components/sumikko-card"
 import { supabase } from "@/lib/supabase"
 import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
-import { RefreshCcw, RefreshCw } from "lucide-react"
+import { RefreshCcw, RefreshCw, Trash, AlertCircle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog"
 
 export default function ArchivedBillsPage() {
   const [archivedBills, setArchivedBills] = useState<Bill[]>([])
@@ -16,6 +26,8 @@ export default function ArchivedBillsPage() {
   const [allUsers, setAllUsers] = useState<Profile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRestoring, setIsRestoring] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const router = useRouter()
 
   useEffect(() => {
@@ -229,6 +241,98 @@ export default function ArchivedBillsPage() {
     }
   }
 
+  const handleDeleteBill = async (bill: Bill) => {
+    if (!confirm(`Are you sure you want to permanently delete this bill: ${bill.title}?`)) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    try {
+      // Delete the archived bill record
+      const { error } = await supabase
+        .from("archived_bills")
+        .delete()
+        .eq("id", bill.archived_record_id);
+      
+      if (error) {
+        throw new Error(`Error deleting archived bill: ${error.message}`);
+      }
+      
+      // Update UI
+      setArchivedBills(prev => prev.filter(b => b.archived_record_id !== bill.archived_record_id));
+      alert("Bill permanently deleted.");
+    } catch (error) {
+      console.error("Error deleting bill:", error);
+      alert("Failed to delete bill: " + (error as Error).message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAllForPayer = async (payerId: string) => {
+    const billsToDelete = archivedBills.filter(bill => bill.payer_id === payerId);
+    if (billsToDelete.length === 0) return;
+    
+    if (!confirm(`Are you sure you want to permanently delete all ${billsToDelete.length} bills for ${getUsernameById(payerId)}?`)) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    try {
+      // Get all archived record IDs
+      const archivedIds = billsToDelete.map(bill => bill.archived_record_id);
+      
+      // Delete all records in one query
+      const { error } = await supabase
+        .from("archived_bills")
+        .delete()
+        .in('id', archivedIds);
+      
+      if (error) {
+        throw new Error(`Error deleting archived bills: ${error.message}`);
+      }
+      
+      // Update UI
+      setArchivedBills(prev => prev.filter(bill => !archivedIds.includes(bill.archived_record_id!)));
+      alert(`Successfully deleted all bills for ${getUsernameById(payerId)}`);
+    } catch (error) {
+      console.error("Error deleting all bills:", error);
+      alert("Failed to delete bills: " + (error as Error).message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAllArchived = async () => {
+    if (archivedBills.length === 0) return;
+    
+    setDeleteConfirmation("");
+
+    if (confirm(`Are you sure you want to permanently delete ALL archived bills? This action cannot be undone.`)) {
+      setIsDeleting(true);
+      try {
+        // Delete all archived records
+        const { error } = await supabase
+          .from("archived_bills")
+          .delete()
+          .gte('id', 0); // Delete all records
+        
+        if (error) {
+          throw new Error(`Error deleting all archived bills: ${error.message}`);
+        }
+        
+        // Update UI
+        setArchivedBills([]);
+        alert("All archived bills have been permanently deleted.");
+      } catch (error) {
+        console.error("Error deleting all archived bills:", error);
+        alert("Failed to delete all bills: " + (error as Error).message);
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
   if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen">
@@ -244,86 +348,103 @@ export default function ArchivedBillsPage() {
 
   return (
     <div className="min-h-screen">
-      <SumikkoHeader showBackButton />
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center max-w-7xl mx-auto px-4 py-2">
+        <SumikkoHeader showBackButton />
+      </div>
+      
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        <div className="flex justify-between items-center flex-wrap gap-2">
           <h1 className="text-2xl font-bold">Archived Bills</h1>
-          <Button 
+          <Button
             variant="outline"
             onClick={() => router.push("/bills")}
+            className="flex items-center gap-2"
           >
-            Back to Active Bills
+            Back to Bills
           </Button>
         </div>
 
-        {Object.keys(archivedBillsByPayer).length === 0 ? (
-          <p className="text-muted-foreground">No archived bills found.</p>
+        {archivedBills.length === 0 ? (
+          <div className="bg-secondary/30 rounded-lg p-8 text-center">
+            <p className="text-lg text-muted-foreground">No archived bills found.</p>
+          </div>
         ) : (
-          <div className="space-y-10">
-            {Object.entries(archivedBillsByPayer).map(([payerId, bills]) => {
-              const payerName = getUsernameById(payerId);
-              return (
-                <div key={payerId} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-medium">Archived bills for {payerName}</h3>
-                    {currentUser.id === bills[0].created_by && (
+          <div className="space-y-6">
+            {Object.entries(getArchivedBillsByPayer()).map(([payerId, bills]) => (
+              <SumikkoCard
+                key={payerId}
+                title={
+                  <div className="flex justify-between w-full items-center flex-wrap gap-2">
+                    <div>Bills paid by {getUsernameById(payerId)}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button 
+                        size="sm" 
                         variant="outline"
                         onClick={() => handleRestoreAllForPayer(payerId)}
-                        disabled={isRestoring}
-                        className="flex items-center gap-2"
+                        disabled={isRestoring || isDeleting}
+                        className="flex items-center gap-1 whitespace-nowrap"
                       >
                         <RefreshCw className="h-4 w-4" />
                         Restore All
                       </Button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {bills.map((bill) => (
-                      <SumikkoCard
-                        key={bill.archived_record_id}
-                        title={bill.title}
-                        subtitle={`Archived on ${format(new Date(bill.archived_at || ""), "PPP")}`}
-                        titleExtra={
-                          currentUser.id === bill.created_by && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleRestoreBill(bill)}
-                              disabled={isRestoring}
-                              className="flex items-center gap-1"
-                            >
-                              <RefreshCcw className="h-4 w-4" />
-                              Restore
-                            </Button>
-                          )
-                        }
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleDeleteAllForPayer(payerId)}
+                        disabled={isRestoring || isDeleting}
+                        className="flex items-center gap-1 whitespace-nowrap"
                       >
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Total Amount:</span>
-                            <span className="font-medium">${bill.amount.toFixed(2)}</span>
+                        <Trash className="h-4 w-4" />
+                        Delete All
+                      </Button>
+                    </div>
+                  </div>
+                }
+              >
+                <ul className="space-y-4">
+                  {bills.map((bill) => (
+                    <li key={bill.archived_record_id} className="sumikko-list-item">
+                      <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                        <div className="flex-grow">
+                          <div className="font-medium flex items-baseline justify-between flex-wrap gap-2">
+                            <span className="text-base">{bill.title}</span>
+                            <span className="text-lg font-semibold text-secondary-foreground">${parseFloat(bill.amount.toString()).toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Due Date:</span>
-                            <span>{format(new Date(bill.due_date), "PPP")}</span>
+                          <div className="text-muted-foreground">
+                            Date: {format(new Date(bill.due_date), "PPP")}
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Created By:</span>
-                            <span>{getUsernameById(bill.created_by)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Payee:</span>
-                            <span>{getUsernameById(bill.payee || "")}</span>
+                          <div className="text-muted-foreground">
+                            Paid on: {format(new Date(bill.archived_at || bill.created_at), "PPP")}
                           </div>
                         </div>
-                      </SumikkoCard>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreBill(bill)}
+                            disabled={isRestoring || isDeleting}
+                            className="flex items-center gap-1 whitespace-nowrap flex-1 sm:flex-auto"
+                          >
+                            <RefreshCcw className="h-4 w-4" />
+                            Restore
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteBill(bill)}
+                            disabled={isRestoring || isDeleting}
+                            className="flex items-center gap-1 whitespace-nowrap flex-1 sm:flex-auto"
+                          >
+                            <Trash className="h-4 w-4" />
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </SumikkoCard>
+            ))}
           </div>
         )}
       </div>

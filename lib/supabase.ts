@@ -11,6 +11,7 @@ export type Profile = {
   id: string;
   username: string;
   created_at: string;
+  profile_picture_url?: string | null;
 };
 
 export type Bill = {
@@ -23,6 +24,7 @@ export type Bill = {
   created_at: string;
   payee?: string;
   archived_at?: string;
+  notes?: string | null;
   // Fields used in the UI for archived bills
   archived_record_id?: string;
   payer_id?: string;

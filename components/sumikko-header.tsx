@@ -1,11 +1,12 @@
 "use client"
 
-import { Home, LogOut } from "lucide-react"
+import { Home, LogOut, UserCircle } from "lucide-react"
 import { ModeToggle } from "./mode-toggle"
 import { Button, buttonVariants } from "./ui/button"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { supabase, Profile } from "@/lib/supabase"
 import { useEffect, useState } from "react"
+import { ProfileAvatar } from "./profile-avatar"
 
 interface SumikkoHeaderProps {
   showBackButton?: boolean
@@ -21,6 +22,7 @@ export function SumikkoHeader({
   const router = useRouter()
   const [name, setName] = useState<string | null>(propName || null)
   const [isLoading, setIsLoading] = useState(!propName)
+  const [userProfile, setUserProfile] = useState<Profile | null>(null)
 
   useEffect(() => {
     if (propName) {
@@ -34,11 +36,12 @@ export function SumikkoHeader({
         if (session?.user) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("username")
+            .select("*")
             .eq("id", session.user.id)
             .single()
           
           setName(profile?.username || null)
+          setUserProfile(profile || null)
         }
       } catch (error) {
         console.error("Error fetching user:", error)
@@ -91,32 +94,38 @@ export function SumikkoHeader({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
             {name && !hideAuth && (
               <>
-                <button
-                  onClick={() => router.push("/account")}
-                  className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-sm font-medium text-primary">
-                      {name.charAt(0).toUpperCase()}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => router.push("/profile")}
+                    className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full hover:bg-secondary/80 transition-colors"
+                  >
+                    {userProfile ? (
+                      <ProfileAvatar user={userProfile} size="sm" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-sm font-medium text-primary">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <span className="text-sm font-medium">
+                      Welcome, {name}
                     </span>
-                  </div>
-                  <span className="text-sm font-medium">
-                    Welcome, {name}
-                  </span>
-                </button>
+                  </button>
+                </div>
                 {showBackButton && (
                   <Button
-                    className={buttonVariants({ variant: "secondary", className: "sumikko-button" })}
+                    className={buttonVariants({ variant: "secondary", className: "sumikko-button whitespace-nowrap" })}
                     onClick={() => router.push("/dashboard")}
                   >
                     Back to Dashboard
                   </Button>
                 )}
                 <Button
-                  className={buttonVariants({ variant: "secondary", className: "sumikko-button" })}
+                  className={buttonVariants({ variant: "secondary", className: "sumikko-button whitespace-nowrap" })}
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4" />
