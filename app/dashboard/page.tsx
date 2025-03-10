@@ -36,6 +36,9 @@ export default function Dashboard() {
   const [isLoadingKeyHolders, setIsLoadingKeyHolders] = useState(true)
   const router = useRouter()
 
+  // Add a new state to track if data was loaded from DB
+  const [keyDataInitialized, setKeyDataInitialized] = useState(false)
+
   useEffect(() => {
     async function loadUserProfile() {
       // Get username from cookie
@@ -97,6 +100,7 @@ export default function Dashboard() {
   const loadKeyHolders = async () => {
     try {
       setIsLoadingKeyHolders(true);
+      console.log("Loading key holders data from database...");
       
       // Get key holders data
       const { data: keyHoldersData, error } = await supabase
@@ -106,6 +110,7 @@ export default function Dashboard() {
       
       if (error) {
         if (error.code === "PGRST116") {
+          console.log("No key holder data found, creating initial record");
           // No data found, create initial record
           const initialData = {
             users: [],
@@ -118,24 +123,27 @@ export default function Dashboard() {
             
           if (insertError) {
             console.error("Error creating initial key holders data:", insertError);
+          } else {
+            console.log("Successfully created initial key holders data");
           }
-          
-          return; // Exit and let the realtime subscription handle the update
         } else {
           console.error("Error loading key holders:", error);
-          return;
         }
-      }
-      
-      if (keyHoldersData?.data) {
+      } else if (keyHoldersData?.data) {
         // Update keyHolders state with the saved data
         const savedData = keyHoldersData.data;
+        console.log("Loaded key holders data:", savedData);
         
         if (savedData.users && Array.isArray(savedData.users)) {
+          // Create a map of user IDs to their key status
+          const keyStatusMap = new Map<string, boolean>(
+            savedData.users.map((u: any) => [u.userId, Boolean(u.hasKey)])
+          );
+          
           setKeyHolders(prevKeyHolders => 
             prevKeyHolders.map(kh => ({
               ...kh,
-              hasKey: savedData.users.some((u: any) => u.userId === kh.userId && u.hasKey)
+              hasKey: keyStatusMap.has(kh.userId) ? Boolean(keyStatusMap.get(kh.userId)) : false
             }))
           );
         }
@@ -144,7 +152,8 @@ export default function Dashboard() {
           setOtherKeyHolder(savedData.other);
         }
         
-        console.log("Successfully loaded key holders data:", savedData);
+        console.log("Successfully applied key holders data to state");
+        setKeyDataInitialized(true);
       }
     } catch (error) {
       console.error("Error loading key holders:", error);
@@ -170,23 +179,27 @@ export default function Dashboard() {
       
       setKeyHolderError(null);
       
-      // Update the state
-      setKeyHolders(prevKeyHolders => 
-        prevKeyHolders.map(kh => 
-          kh.userId === userId 
-            ? { ...kh, hasKey: !kh.hasKey } 
-            : kh
-        )
-      );
-      
-      // Immediately save to database
-      await saveKeyHolders(keyHolders.map(kh => 
+      // Create the updated key holders array
+      const updatedKeyHolders = keyHolders.map(kh => 
         kh.userId === userId 
           ? { ...kh, hasKey: !kh.hasKey } 
           : kh
-      ), otherKeyHolder);
+      );
+      
+      // Update the state first for responsive UI
+      setKeyHolders(updatedKeyHolders);
+      
+      // Then immediately save to database
+      const saveResult = await saveKeyHolders(updatedKeyHolders, otherKeyHolder);
+      
+      // If saving fails, revert the UI change
+      if (!saveResult) {
+        setKeyHolders(keyHolders); // Revert to previous state
+        setKeyHolderError("Failed to save changes. Please try again.");
+      }
     } catch (error) {
       console.error("Error toggling key holder:", error);
+      setKeyHolderError("An error occurred while updating key holders.");
     }
   }
 
@@ -210,33 +223,41 @@ export default function Dashboard() {
         hasKey: !otherKeyHolder.hasKey
       };
       
-      // Update the state
+      // Update the state for responsive UI
       setOtherKeyHolder(updatedOtherKeyHolder);
       
-      // Immediately save to database
-      await saveKeyHolders(keyHolders, updatedOtherKeyHolder);
+      // Then immediately save to database
+      const saveResult = await saveKeyHolders(keyHolders, updatedOtherKeyHolder);
+      
+      // If saving fails, revert the UI change
+      if (!saveResult) {
+        setOtherKeyHolder(otherKeyHolder); // Revert to previous state
+        setKeyHolderError("Failed to save changes. Please try again.");
+      }
     } catch (error) {
       console.error("Error toggling other key holder:", error);
+      setKeyHolderError("An error occurred while updating key holders.");
     }
   }
 
   // Update the "Other" key holder name
   const updateOtherKeyHolderName = (name: string) => {
-    setOtherKeyHolder(prev => ({
-      ...prev,
+    const updatedOtherKeyHolder = {
+      ...otherKeyHolder,
       name
-    }));
+    };
+    setOtherKeyHolder(updatedOtherKeyHolder);
   }
 
   // Save key holders to the database with optional parameters for immediate updates
   const saveKeyHolders = async (
     currentKeyHolders = keyHolders, 
     currentOtherKeyHolder = otherKeyHolder
-  ) => {
+  ): Promise<boolean> => {
     try {
       if (!currentKeyHolders || !currentOtherKeyHolder) {
         console.error("Missing key holder data for saving");
-        return;
+        return false;
       }
       
       // Prepare the data to save
@@ -275,18 +296,23 @@ export default function Dashboard() {
       
       if (result.error) {
         console.error("Error saving key holders data:", result.error);
+        return false;
       } else {
         console.log("Successfully saved key holders data");
+        return true;
       }
     } catch (error) {
       console.error("Error saving key holders:", error);
+      return false;
     }
   };
 
-  // Add realtime subscription for key holders
+  // Add improved realtime subscription for key holders with better handling
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !keyDataInitialized) return;
 
+    console.log("Setting up realtime subscription for key holders");
+    
     const channel = supabase
       .channel('key-holders-changes')
       .on(
@@ -296,16 +322,26 @@ export default function Dashboard() {
           schema: 'public',
           table: 'key_holders'
         },
-        () => {
-          loadKeyHolders(); // Reload data when changes occur
+        (payload) => {
+          console.log("Received key holders update:", payload);
+          // Reload data when changes occur
+          loadKeyHolders();
         }
       )
       .subscribe();
 
     return () => {
+      console.log("Cleaning up key holders subscription");
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [keyDataInitialized]); // Only set up subscription after initial data load
+
+  // Ensure keyholders are saved when "Other" name is updated
+  const handleOtherKeyHolderNameBlur = async () => {
+    if (otherKeyHolder.hasKey && otherKeyHolder.name) {
+      await saveKeyHolders();
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -363,7 +399,7 @@ export default function Dashboard() {
                     placeholder="Enter name"
                     className="ml-2 w-full max-w-[200px]"
                     disabled={!otherKeyHolder.hasKey}
-                    onBlur={() => saveKeyHolders()}
+                    onBlur={handleOtherKeyHolderNameBlur}
                   />
                 </div>
               </div>

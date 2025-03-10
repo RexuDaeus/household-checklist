@@ -122,24 +122,10 @@ export default function ProfilePage() {
       const fileExt = file.name.split(".").pop();
       const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
       
-      // Use 'profiles' bucket instead of 'avatars'
-      const bucketName = 'profiles';
-      
-      // Try to create the bucket if it doesn't exist (this operation is idempotent)
-      try {
-        await supabase.storage.createBucket(bucketName, {
-          public: true,
-          fileSizeLimit: 1024 * 1024 * 2 // 2MB
-        });
-        console.log(`Bucket '${bucketName}' created or already exists`);
-      } catch (bucketError) {
-        console.log("Note: Bucket may already exist:", bucketError);
-        // Continue anyway, as the bucket might already exist
-      }
-
-      // Upload to the profiles bucket
+      // Use only 'public' bucket which is created by default in Supabase
+      // Instead of trying to create a bucket or use a custom one
       const { error: uploadError, data: uploadData } = await supabase.storage
-        .from(bucketName)
+        .from('public')
         .upload(`avatars/${fileName}`, file, {
           cacheControl: '3600',
           upsert: true
@@ -153,7 +139,7 @@ export default function ProfilePage() {
 
       // Get the public URL for the uploaded file
       const { data: { publicUrl } } = supabase.storage
-        .from(bucketName)
+        .from('public')
         .getPublicUrl(`avatars/${fileName}`);
 
       // Update the user's profile with the new profile picture URL
