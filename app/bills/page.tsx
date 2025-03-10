@@ -32,7 +32,7 @@ function arrangeGridItems(gridId: string) {
   // Use CSS Grid with manual placement for better control
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-  grid.style.gap = '1.5rem';
+  grid.style.gap = '1.5rem'; // Horizontal gap between columns
   grid.style.alignItems = 'start';
   
   // Get all the bill cards
@@ -48,6 +48,7 @@ function arrangeGridItems(gridId: string) {
     card.style.left = '';
     card.style.width = '';
     card.style.opacity = '1';
+    card.style.marginBottom = ''; // Reset margin
   });
   
   // Force layout calculation
@@ -67,11 +68,31 @@ function arrangeGridItems(gridId: string) {
     if (col1Height <= col2Height) {
       // Place in column 1
       card.style.gridColumn = '1';
-      col1Height += height + 24; // Add height + gap
+      
+      // No margin for the first card in the column
+      if (col1Height > 0) {
+        card.style.marginTop = '1.5rem'; // Add top margin to create spacing
+      } else {
+        card.style.marginTop = '0'; // First card has no top margin
+      }
+      
+      col1Height += height;
+      // Only add gap height after adding the card
+      if (col1Height > 0) col1Height += 24; // Add height + gap
     } else {
       // Place in column 2
       card.style.gridColumn = '2';
-      col2Height += height + 24; // Add height + gap
+      
+      // No margin for the first card in the column
+      if (col2Height > 0) {
+        card.style.marginTop = '1.5rem'; // Add top margin to create spacing
+      } else {
+        card.style.marginTop = '0'; // First card has no top margin
+      }
+      
+      col2Height += height;
+      // Only add gap height after adding the card
+      if (col2Height > 0) col2Height += 24; // Add height + gap
     }
   });
 }
@@ -1053,9 +1074,6 @@ export default function BillsPage() {
                                             <span className="text-base">${bill.amount.toFixed(2)}</span>
                                           </div>
                                         </div>
-                                        <div className="text-muted-foreground">
-                                          Due date: {format(new Date(bill.due_date), "MMM d, yyyy")}
-                                        </div>
                                         {bill.notes && (
                                           <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
                                             <span className="font-semibold">Notes: </span>
@@ -1283,9 +1301,6 @@ export default function BillsPage() {
                                       <span className="text-muted-foreground">Total: </span>
                                       <span className="text-base">${bill.amount.toFixed(2)}</span>
                                     </div>
-                                  </div>
-                                  <div className="text-muted-foreground">
-                                    Due date: {format(new Date(bill.due_date), "MMM d, yyyy")}
                                   </div>
                                   {bill.notes && (
                                     <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
