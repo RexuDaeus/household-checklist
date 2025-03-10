@@ -12,14 +12,25 @@ export function AutoChoreResetProvider({ children }: AutoChoreResetProviderProps
     // Run on component mount
     checkAndResetChores()
     
-    // Set up an interval to check every hour
-    // This is a backup in case the user has the app open for a long time
+    // Set up an interval to check every 15 minutes
     const intervalId = setInterval(() => {
+      console.log("Running scheduled chore reset check");
       checkAndResetChores()
-    }, 60 * 60 * 1000) // Every hour
+    }, 15 * 60 * 1000) // Every 15 minutes
+    
+    // Also check when the page becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("Page became visible, checking chores");
+        checkAndResetChores();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      clearInterval(intervalId)
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
   }, [])
   

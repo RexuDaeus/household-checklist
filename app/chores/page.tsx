@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { checkAndResetChores } from "@/lib/chore-service"
 
 export default function ChoresPage() {
   const [chores, setChores] = useState<Chore[]>([])
@@ -30,6 +31,9 @@ export default function ChoresPage() {
   useEffect(() => {
     async function loadData() {
       try {
+        // Check for chores that need to be reset
+        await checkAndResetChores();
+        
         // Get current user session
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) {
