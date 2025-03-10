@@ -180,71 +180,93 @@ export default function BillsPage() {
     };
   }, [isLoading, applyMasonryLayout]);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setIsLoading(true);
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          router.push("/login");
-          return;
-        }
-
-        // Load all users
-        const { data: usersData } = await supabase
-          .from("profiles")
-          .select("*")
-          .order("username");
-        
-        if (usersData) {
-          setAllUsers(usersData);
-          
-          // Find current user
-          const currentUserData = usersData.find(user => user.id === session.user.id);
-          setCurrentUser(currentUserData || null);
-          
-          // Set user list excluding current user for payer selection
-          setUsers(usersData.filter(user => user.id !== session.user.id));
-        }
-
-        // Load bills - make the query explicit to ensure we get all relevant bills
-        const { data: billsData, error } = await supabase
-          .from("bills")
-          .select("*")
-          .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}},payee.eq.${session.user.id}`)
-          .order("created_at", { ascending: false });
-        
-        if (error) {
-          console.error("Error loading bills:", error);
-          return;
-        }
-        
-        if (billsData) {
-          // Log the bills for debugging
-          console.log("Loaded bills from database:", billsData);
-          console.log("Bills where this user is payee:", billsData.filter(bill => bill.payee === session.user.id));
-          console.log("Bills where this user is a payer:", billsData.filter(bill => bill.payers.includes(session.user.id)));
-          
-          setBills(billsData);
-        }
-        
-        // Load archived bills count
-        const { count } = await supabase
-          .from("archived_bills")
-          .select("*", { count: "exact", head: true })
-          .eq("payer_id", session.user.id);
-        
-        setArchivedBillsCount(count || 0);
-      } catch (error) {
-        console.error("Error in loadData:", error);
-      } finally {
-        setIsLoading(false);
+  // Define loadData as a named function that can be called from multiple places
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login");
+        return;
       }
-    }
 
-    loadData()
-  }, [router])
+      // Load all users
+      const { data: usersData } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("username");
+      
+      if (usersData) {
+        setAllUsers(usersData);
+        
+        // Find current user
+        const currentUserData = usersData.find(user => user.id === session.user.id);
+        setCurrentUser(currentUserData || null);
+        
+        // Set user list excluding current user for payer selection
+        setUsers(usersData.filter(user => user.id !== session.user.id));
+      }
+
+      // First, let's try to load bills directly where the user is the payee
+      const { data: payeeBills, error: payeeError } = await supabase
+        .from("bills")
+        .select("*")
+        .eq("payee", session.user.id)
+        .order("created_at", { ascending: false });
+        
+      if (payeeError) {
+        console.error("Error loading bills where user is payee:", payeeError);
+      } else {
+        console.log("Bills where user is payee:", payeeBills);
+      }
+      
+      // Now load all bills where user is involved (creator, payer, or payee)
+      const { data: billsData, error } = await supabase
+        .from("bills")
+        .select("*")
+        .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}},payee.eq.${session.user.id}`)
+        .order("created_at", { ascending: false });
+      
+      if (error) {
+        console.error("Error loading bills:", error);
+        return;
+      }
+      
+      if (billsData) {
+        console.log("Total bills loaded:", billsData.length);
+        console.log("Bills where this user is payee:", 
+          billsData.filter(bill => bill.payee === session.user.id).map(b => ({
+            id: b.id,
+            title: b.title,
+            amount: b.amount,
+            payee: b.payee,
+            payers: b.payers,
+            created_by: b.created_by
+          }))
+        );
+        
+        // Make sure we have the correct bills
+        setBills(billsData);
+      }
+      
+      // Load archived bills count
+      const { count } = await supabase
+        .from("archived_bills")
+        .select("*", { count: "exact", head: true })
+        .eq("payer_id", session.user.id);
+      
+      setArchivedBillsCount(count || 0);
+    } catch (error) {
+      console.error("Error in loadData:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [router]);
 
   const handleNewBill = async () => {
     if (!newBillName || !newBillAmount || !newBillPayee || selectedPayers.length === 0 || !currentUser) return
@@ -256,6 +278,10 @@ export default function BillsPage() {
         payersIncludingCreator.push(currentUser.id);
       }
 
+      // Make sure the payee field is correctly set
+      console.log("Creating bill with payee:", newBillPayee);
+      console.log("Payee display name:", getUsernameById(newBillPayee));
+      
       const newBill = {
         title: newBillName,
         amount: parseFloat(newBillAmount),
@@ -300,11 +326,11 @@ export default function BillsPage() {
               bill.id === tempId ? data[0] : bill
             );
           });
+          
+          // Force load data again to ensure proper visibility
+          loadData();
         }
       }
-
-      // Refresh the page to ensure proper bill visibility
-      // await loadData();
 
       setNewBillName("");
       setNewBillAmount("");
@@ -710,34 +736,32 @@ export default function BillsPage() {
     return acc;
   }, {} as Record<string, Bill[]>);
 
-  // Group my bills as payee by payers, excluding self-bills
-  const myBillsAsPayee = billsByPayee[currentUser.id] || [];
-  
-  // We need to make sure ALL payers are correctly associated with each bill
-  // This is important for the "Money Owed to You" section
-  const myBillsByPayer = myBillsAsPayee.reduce((acc, bill) => {
-    // For each bill where I'm the payee, group it by each payer
+  // Get ALL bills where I'm the payee - this is critical for the "Money Owed to You" section
+  const myBillsAsPayee = bills.filter(bill => bill.payee === currentUser.id);
+  console.log("Direct filter of bills where I'm payee:", myBillsAsPayee.length);
+
+  // Group bills where I'm the payee by payer
+  const myBillsByPayer: Record<string, Bill[]> = {};
+
+  // Loop through each bill where I'm the payee
+  myBillsAsPayee.forEach(bill => {
+    // For each payer in the bill, add this bill to their group
     bill.payers.forEach(payerId => {
-      // Skip bills where you're the only payer and payee (self-bills)
-      if (payerId !== currentUser.id || (bill.payers.length === 1 && bill.payee === currentUser.id)) {
-        if (!acc[payerId]) {
-          acc[payerId] = [];
+      // Skip myself to avoid self-bills unless I'm the only payer
+      if (payerId !== currentUser.id || bill.payers.length === 1) {
+        if (!myBillsByPayer[payerId]) {
+          myBillsByPayer[payerId] = [];
         }
-        // Make sure we don't add duplicate bills
-        if (!acc[payerId].some(existingBill => existingBill.id === bill.id)) {
-          acc[payerId].push(bill);
+        
+        // Check if this bill is already in the payer's group to avoid duplicates
+        const billExists = myBillsByPayer[payerId].some(existingBill => existingBill.id === bill.id);
+        if (!billExists) {
+          myBillsByPayer[payerId].push(bill);
         }
       }
     });
-    return acc;
-  }, {} as Record<string, Bill[]>);
+  });
 
-  // Add debugging logs to understand what's happening with bill grouping
-  console.log("Current user ID:", currentUser.id);
-  console.log("All bills:", bills);
-  console.log("Bills where I am payee:", myBillsAsPayee);
-  console.log("Bills grouped by payer:", myBillsByPayer);
-  
   // Group bills that the current user is a payer for, excluding where they are also the payee
   const billsWhereIAmPayer = bills.filter(bill => 
     bill.payers.includes(currentUser.id) && bill.payee !== currentUser.id
@@ -752,10 +776,22 @@ export default function BillsPage() {
     acc[payeeKey].push(bill);
     return acc;
   }, {} as Record<string, Bill[]>);
-  
-  console.log("Bills where I am payer:", billsWhereIAmPayer);
-  console.log("Bills by payee where I am payer:", billsByPayeeWhereIAmPayer);
-  
+
+  // Add comprehensive debugging
+  console.log("DETAILED BILL DEBUG INFO:");
+  console.log(`Current user ID: ${currentUser.id}`);
+  console.log(`Total bills loaded: ${bills.length}`);
+  console.log(`Bills where I'm the payee (direct filter): ${myBillsAsPayee.length}`);
+  console.log(`Bills where I'm the payee (group by payer):`, 
+    Object.entries(myBillsByPayer).map(([payerId, bills]) => ({
+      payerId,
+      payerName: getUsernameById(payerId),
+      billCount: bills.length,
+      bills: bills.map(b => ({id: b.id, title: b.title, amount: b.amount}))
+    }))
+  );
+  console.log(`Bills where I'm a payer but not payee: ${billsWhereIAmPayer.length}`);
+
   // Calculate per person total for a bill
   const getPerPersonTotal = (bill: Bill): string => {
     return getAmountPerPerson(bill.amount, bill.payers.length);
@@ -779,21 +815,6 @@ export default function BillsPage() {
         : [...prev, payerId]
     )
   }
-
-  // Add final debug logs before rendering
-  console.log("--- FINAL BILL VISIBILITY DEBUG ---");
-  console.log("Total bills:", bills.length);
-  console.log("Bills where I'm the payee:", myBillsAsPayee.length);
-  console.log("Bills grouped by payer (after processing):", 
-    Object.keys(myBillsByPayer).map(payerId => ({
-      payerId, 
-      payerName: getUsernameById(payerId), 
-      billCount: myBillsByPayer[payerId].length,
-      billIds: myBillsByPayer[payerId].map(bill => bill.id)
-    }))
-  );
-  console.log("Bills where I'm a payer (not payee):", billsWhereIAmPayer.length);
-  console.log("----------------------------------");
 
   return (
     <div className="min-h-screen">
@@ -958,6 +979,8 @@ export default function BillsPage() {
                   return null;
                 }
                 
+                console.log(`Rendering bills for payer: ${payerName} (${payerId}), Bills: ${payerBills.length}`);
+                
                 return (
                   <div key={payerId} className="h-fit bill-card">
                     <SumikkoCard
@@ -984,191 +1007,194 @@ export default function BillsPage() {
                           <div key={dateKey}>
                             <h3 className="font-medium text-sm text-primary mb-2">{dateKey}</h3>
                             <ul className="space-y-4">
-                              {dateBills.map((bill) => (
-                                <li key={bill.id} className="sumikko-list-item">
-                                  {editingBill === bill.id ? (
-                                    // Edit form
-                                    <div className="w-full space-y-3">
-                                      <Input
-                                        value={editFormData.title}
-                                        onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                                        placeholder="Bill title"
-                                        className="w-full"
-                                      />
-                                      <div className="space-y-2">
-                                        <Label>Select Payee (Edit)</Label>
-                                        <select 
-                                          className="w-full p-2 rounded-md border border-input"
-                                          value={editFormData.payee}
-                                          onChange={(e) => setEditFormData({
-                                            ...editFormData,
-                                            payee: e.target.value
-                                          })}
-                                        >
-                                          <option value="">Select a payee</option>
-                                          <option value={currentUser.id}>{currentUser.username} (You)</option>
-                                          {users.map(user => (
-                                            <option key={user.id} value={user.id}>{user.username}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <Input
-                                        type="number"
-                                        step="0.01"
-                                        value={editFormData.amount}
-                                        onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
-                                        placeholder="Amount"
-                                        className="w-full"
-                                      />
-                                      <Input
-                                        type="date"
-                                        value={editFormData.due_date}
-                                        onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
-                                        className="w-full"
-                                      />
-                                      <div className="space-y-2">
-                                        <Label>Notes (Optional)</Label>
-                                        <textarea
-                                          value={editFormData.notes || ""}
-                                          onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
-                                          placeholder="Additional notes about this bill"
-                                          className="w-full p-2 rounded-md border border-input resize-vertical"
-                                          rows={3}
+                              {dateBills.map((bill) => {
+                                console.log(`Rendering bill: ${bill.id}, ${bill.title}, Payee: ${bill.payee}, Created by: ${bill.created_by}`);
+                                return (
+                                  <li key={bill.id} className="sumikko-list-item">
+                                    {editingBill === bill.id ? (
+                                      // Edit form
+                                      <div className="w-full space-y-3">
+                                        <Input
+                                          value={editFormData.title}
+                                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                                          placeholder="Bill title"
+                                          className="w-full"
                                         />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label>Select Payers (Edit)</Label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <div className="flex items-center space-x-2">
-                                            <Checkbox
-                                              id={`edit-payer-${currentUser.id}`}
-                                              checked={editFormData.payers.includes(currentUser.id)}
-                                              onCheckedChange={() => {
-                                                const isCurrentlySelected = editFormData.payers.includes(currentUser.id);
-                                                setEditFormData({
-                                                  ...editFormData,
-                                                  payers: isCurrentlySelected 
-                                                    ? editFormData.payers.filter(id => id !== currentUser.id)
-                                                    : [...editFormData.payers, currentUser.id]
-                                                });
-                                              }}
-                                            />
-                                            <Label 
-                                              htmlFor={`edit-payer-${currentUser.id}`}
-                                              className="text-sm font-medium"
-                                            >
-                                              {currentUser.username} (You)
-                                            </Label>
-                                          </div>
-                                          {users.map(user => (
-                                            <div key={user.id} className="flex items-center space-x-2">
+                                        <div className="space-y-2">
+                                          <Label>Select Payee (Edit)</Label>
+                                          <select 
+                                            className="w-full p-2 rounded-md border border-input"
+                                            value={editFormData.payee}
+                                            onChange={(e) => setEditFormData({
+                                              ...editFormData,
+                                              payee: e.target.value
+                                            })}
+                                          >
+                                            <option value="">Select a payee</option>
+                                            <option value={currentUser.id}>{currentUser.username} (You)</option>
+                                            {users.map(user => (
+                                              <option key={user.id} value={user.id}>{user.username}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          value={editFormData.amount}
+                                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                                          placeholder="Amount"
+                                          className="w-full"
+                                        />
+                                        <Input
+                                          type="date"
+                                          value={editFormData.due_date}
+                                          onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
+                                          className="w-full"
+                                        />
+                                        <div className="space-y-2">
+                                          <Label>Notes (Optional)</Label>
+                                          <textarea
+                                            value={editFormData.notes || ""}
+                                            onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                                            placeholder="Additional notes about this bill"
+                                            className="w-full p-2 rounded-md border border-input resize-vertical"
+                                            rows={3}
+                                          />
+                                        </div>
+                                        <div className="space-y-2">
+                                          <Label>Select Payers (Edit)</Label>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="flex items-center space-x-2">
                                               <Checkbox
-                                                id={`edit-payer-${user.id}`}
-                                                checked={editFormData.payers.includes(user.id)}
+                                                id={`edit-payer-${currentUser.id}`}
+                                                checked={editFormData.payers.includes(currentUser.id)}
                                                 onCheckedChange={() => {
-                                                  const isCurrentlySelected = editFormData.payers.includes(user.id);
+                                                  const isCurrentlySelected = editFormData.payers.includes(currentUser.id);
                                                   setEditFormData({
                                                     ...editFormData,
                                                     payers: isCurrentlySelected 
-                                                      ? editFormData.payers.filter(id => id !== user.id)
-                                                      : [...editFormData.payers, user.id]
+                                                      ? editFormData.payers.filter(id => id !== currentUser.id)
+                                                      : [...editFormData.payers, currentUser.id]
                                                   });
                                                 }}
                                               />
                                               <Label 
-                                                htmlFor={`edit-payer-${user.id}`}
+                                                htmlFor={`edit-payer-${currentUser.id}`}
                                                 className="text-sm font-medium"
                                               >
-                                                {user.username}
+                                                {currentUser.username} (You)
                                               </Label>
                                             </div>
-                                          ))}
+                                            {users.map(user => (
+                                              <div key={user.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`edit-payer-${user.id}`}
+                                                  checked={editFormData.payers.includes(user.id)}
+                                                  onCheckedChange={() => {
+                                                    const isCurrentlySelected = editFormData.payers.includes(user.id);
+                                                    setEditFormData({
+                                                      ...editFormData,
+                                                      payers: isCurrentlySelected 
+                                                        ? editFormData.payers.filter(id => id !== user.id)
+                                                        : [...editFormData.payers, user.id]
+                                                    });
+                                                  }}
+                                                />
+                                                <Label 
+                                                  htmlFor={`edit-payer-${user.id}`}
+                                                  className="text-sm font-medium"
+                                                >
+                                                  {user.username}
+                                                </Label>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div className="flex justify-end space-x-2 mt-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleCancelEdit}
+                                          >
+                                            <X className="h-4 w-4 mr-1" /> Cancel
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            onClick={() => handleSaveEdit(bill.id)}
+                                          >
+                                            <Save className="h-4 w-4 mr-1" /> Save
+                                          </Button>
                                         </div>
                                       </div>
-                                      <div className="flex justify-end space-x-2 mt-2">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={handleCancelEdit}
-                                        >
-                                          <X className="h-4 w-4 mr-1" /> Cancel
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleSaveEdit(bill.id)}
-                                        >
-                                          <Save className="h-4 w-4 mr-1" /> Save
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    // View mode - Fix the layout for consistent buttons
-                                    <div className="flex flex-col w-full">
-                                      <div className="flex-grow">
-                                        <div className="font-medium flex items-baseline justify-between">
-                                          <span className="text-base">{bill.title}</span>
-                                          <div>
-                                            <span className="text-muted-foreground">Per person: </span>
-                                            <span className="text-lg font-semibold text-secondary-foreground">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                    ) : (
+                                      // View mode - Fix the layout for consistent buttons
+                                      <div className="flex flex-col w-full">
+                                        <div className="flex-grow">
+                                          <div className="font-medium flex items-baseline justify-between">
+                                            <span className="text-base">{bill.title}</span>
+                                            <div>
+                                              <span className="text-muted-foreground">Per person: </span>
+                                              <span className="text-lg font-semibold text-secondary-foreground">${getAmountPerPerson(bill.amount, bill.payers.length)}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex justify-between mt-2">
+                                            <div className="text-muted-foreground">
+                                              Created by: {getUserDisplayElement(bill.created_by)}
+                                            </div>
+                                            <div>
+                                              <span className="text-muted-foreground">Total: </span>
+                                              <span className="text-base">${bill.amount.toFixed(2)}</span>
+                                            </div>
+                                          </div>
+                                          {bill.notes && (
+                                            <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
+                                              <span className="font-semibold">Notes: </span>
+                                              {bill.notes}
+                                            </div>
+                                          )}
+                                          <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
+                                            <span className="font-semibold">Payers: </span>
+                                            {bill.payers.map((id, index) => (
+                                              <React.Fragment key={id}>
+                                                {index > 0 && ", "}
+                                                {getUserDisplayElement(id)}
+                                              </React.Fragment>
+                                            ))}
                                           </div>
                                         </div>
-                                        <div className="flex justify-between mt-2">
-                                          <div className="text-muted-foreground">
-                                            Created by: {getUserDisplayElement(bill.created_by)}
-                                          </div>
-                                          <div>
-                                            <span className="text-muted-foreground">Total: </span>
-                                            <span className="text-base">${bill.amount.toFixed(2)}</span>
-                                          </div>
-                                        </div>
-                                        {bill.notes && (
-                                          <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
-                                            <span className="font-semibold">Notes: </span>
-                                            {bill.notes}
+                                        {bill.created_by === currentUser.id && (
+                                          <div className="flex flex-row justify-end mt-3 space-x-2">
+                                            <Button
+                                              variant="default"
+                                              size="sm"
+                                              onClick={() => handleMarkAsPaid(bill.id, payerId)}
+                                              className="bg-green-600 hover:bg-green-700 text-white"
+                                            >
+                                              Mark Paid
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleEditBill(bill)}
+                                              className="rounded-full"
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              variant="destructive"
+                                              size="sm"
+                                              onClick={() => handleDeleteBill(bill.id, payerId)}
+                                              className="rounded-full"
+                                            >
+                                              <Trash className="h-4 w-4" />
+                                            </Button>
                                           </div>
                                         )}
-                                        <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
-                                          <span className="font-semibold">Payers: </span>
-                                          {bill.payers.map((id, index) => (
-                                            <React.Fragment key={id}>
-                                              {index > 0 && ", "}
-                                              {getUserDisplayElement(id)}
-                                            </React.Fragment>
-                                          ))}
-                                        </div>
                                       </div>
-                                      {bill.created_by === currentUser.id && (
-                                        <div className="flex flex-row justify-end mt-3 space-x-2">
-                                          <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={() => handleMarkAsPaid(bill.id, payerId)}
-                                            className="bg-green-600 hover:bg-green-700 text-white"
-                                          >
-                                            Mark Paid
-                                          </Button>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleEditBill(bill)}
-                                            className="rounded-full"
-                                          >
-                                            <Edit className="h-4 w-4" />
-                                          </Button>
-                                          <Button
-                                            variant="destructive"
-                                            size="sm"
-                                            onClick={() => handleDeleteBill(bill.id, payerId)}
-                                            className="rounded-full"
-                                          >
-                                            <Trash className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </li>
-                              ))}
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           </div>
                         ))}
