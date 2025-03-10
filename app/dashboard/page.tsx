@@ -112,10 +112,14 @@ export default function Dashboard() {
             other: { name: "", hasKey: false }
           };
           
-          await supabase
+          const { error: insertError } = await supabase
             .from("key_holders")
             .insert([{ data: initialData }]);
             
+          if (insertError) {
+            console.error("Error creating initial key holders data:", insertError);
+          }
+          
           return; // Exit and let the realtime subscription handle the update
         } else {
           console.error("Error loading key holders:", error);
@@ -127,7 +131,7 @@ export default function Dashboard() {
         // Update keyHolders state with the saved data
         const savedData = keyHoldersData.data;
         
-        if (savedData.users) {
+        if (savedData.users && Array.isArray(savedData.users)) {
           setKeyHolders(prevKeyHolders => 
             prevKeyHolders.map(kh => ({
               ...kh,
@@ -139,6 +143,8 @@ export default function Dashboard() {
         if (savedData.other) {
           setOtherKeyHolder(savedData.other);
         }
+        
+        console.log("Successfully loaded key holders data:", savedData);
       }
     } catch (error) {
       console.error("Error loading key holders:", error);
@@ -173,8 +179,12 @@ export default function Dashboard() {
         )
       );
       
-      // Save to database
-      await saveKeyHolders();
+      // Immediately save to database
+      await saveKeyHolders(keyHolders.map(kh => 
+        kh.userId === userId 
+          ? { ...kh, hasKey: !kh.hasKey } 
+          : kh
+      ), otherKeyHolder);
     } catch (error) {
       console.error("Error toggling key holder:", error);
     }
@@ -194,14 +204,17 @@ export default function Dashboard() {
       
       setKeyHolderError(null);
       
-      // Update the state
-      setOtherKeyHolder(prev => ({
-        ...prev,
-        hasKey: !prev.hasKey
-      }));
+      // Create the updated state
+      const updatedOtherKeyHolder = {
+        ...otherKeyHolder,
+        hasKey: !otherKeyHolder.hasKey
+      };
       
-      // Save to database
-      await saveKeyHolders();
+      // Update the state
+      setOtherKeyHolder(updatedOtherKeyHolder);
+      
+      // Immediately save to database
+      await saveKeyHolders(keyHolders, updatedOtherKeyHolder);
     } catch (error) {
       console.error("Error toggling other key holder:", error);
     }
@@ -215,20 +228,30 @@ export default function Dashboard() {
     }));
   }
 
-  // Save key holders to the database
-  const saveKeyHolders = async () => {
+  // Save key holders to the database with optional parameters for immediate updates
+  const saveKeyHolders = async (
+    currentKeyHolders = keyHolders, 
+    currentOtherKeyHolder = otherKeyHolder
+  ) => {
     try {
+      if (!currentKeyHolders || !currentOtherKeyHolder) {
+        console.error("Missing key holder data for saving");
+        return;
+      }
+      
       // Prepare the data to save
       const keyHoldersData = {
-        users: keyHolders
+        users: currentKeyHolders
           .filter(kh => kh.hasKey) // Only save users who have keys
           .map(kh => ({
             userId: kh.userId,
             username: kh.username,
             hasKey: true
           })),
-        other: otherKeyHolder
+        other: currentOtherKeyHolder
       };
+      
+      console.log("Saving key holders data:", keyHoldersData);
       
       // Get the current record
       const { data: existingData } = await supabase
@@ -236,17 +259,24 @@ export default function Dashboard() {
         .select("id")
         .single();
       
+      let result;
       if (existingData) {
         // Update existing record
-        await supabase
+        result = await supabase
           .from("key_holders")
           .update({ data: keyHoldersData })
           .eq("id", existingData.id);
       } else {
         // Insert new record
-        await supabase
+        result = await supabase
           .from("key_holders")
           .insert([{ data: keyHoldersData }]);
+      }
+      
+      if (result.error) {
+        console.error("Error saving key holders data:", result.error);
+      } else {
+        console.log("Successfully saved key holders data");
       }
     } catch (error) {
       console.error("Error saving key holders:", error);
@@ -333,7 +363,7 @@ export default function Dashboard() {
                     placeholder="Enter name"
                     className="ml-2 w-full max-w-[200px]"
                     disabled={!otherKeyHolder.hasKey}
-                    onBlur={saveKeyHolders}
+                    onBlur={() => saveKeyHolders()}
                   />
                 </div>
               </div>

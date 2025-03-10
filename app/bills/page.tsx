@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Trash, Edit, Save, X } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -13,6 +13,26 @@ import { supabase } from "@/lib/supabase"
 import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
 import React from "react"
+
+// Move the function outside the component completely
+function arrangeGridItems(gridId: string) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  
+  const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
+  if (cards.length <= 2) return;
+  
+  // Reset all cards order first
+  cards.forEach(card => {
+    card.style.order = '0';
+  });
+  
+  // We need two columns - even indices go to column 1, odd to column 2
+  for (let i = 0; i < cards.length; i++) {
+    const columnIndex = i % 2;
+    cards[i].style.order = String(columnIndex + Math.floor(i / 2) * 2);
+  }
+}
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
@@ -45,6 +65,41 @@ export default function BillsPage() {
   const [archivedBills, setArchivedBills] = useState<Bill[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [newBillNotes, setNewBillNotes] = useState("")
+
+  // Use useRef to track when the component has mounted
+  const hasMounted = useRef(false);
+
+  // Modify the useCallback to use the external function
+  const applyMasonryLayout = useCallback(() => {
+    // Only run this on the client, not during SSR
+    if (typeof window !== 'undefined') {
+      arrangeGridItems('bills-masonry-grid');
+      arrangeGridItems('other-bills-masonry-grid');
+    }
+  }, []);
+
+  // Update useEffect to be more stable
+  useEffect(() => {
+    if (typeof window === 'undefined' || isLoading) return;
+    
+    // Skip the first render to avoid hook count mismatch
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+    
+    // Initial layout after a short delay to let the DOM render
+    const timer = setTimeout(applyMasonryLayout, 500);
+    
+    // Apply layout on window resize
+    window.addEventListener('resize', applyMasonryLayout);
+    
+    // Clean up
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', applyMasonryLayout);
+    };
+  }, [isLoading, applyMasonryLayout]);
 
   useEffect(() => {
     async function loadData() {
@@ -623,49 +678,6 @@ export default function BillsPage() {
         : [...prev, payerId]
     )
   }
-
-  // Move the function outside useEffect and make it stable
-  const arrangeGridItems = (gridId: string) => {
-    const grid = document.getElementById(gridId);
-    if (!grid) return;
-    
-    const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
-    if (cards.length <= 2) return;
-    
-    // Reset all cards order first
-    cards.forEach(card => {
-      card.style.order = '0';
-    });
-    
-    // We need two columns - even indices go to column 1, odd to column 2
-    for (let i = 0; i < cards.length; i++) {
-      const columnIndex = i % 2;
-      cards[i].style.order = String(columnIndex + Math.floor(i / 2) * 2);
-    }
-  };
-
-  // Add this useCallback hook at the component level
-  const applyMasonryLayout = useCallback(() => {
-    arrangeGridItems('bills-masonry-grid');
-    arrangeGridItems('other-bills-masonry-grid');
-  }, []);
-
-  // Update the useEffect to use the stable function
-  useEffect(() => {
-    if (typeof window === 'undefined' || isLoading) return;
-    
-    // Initial layout after a short delay to let the DOM render
-    const timer = setTimeout(applyMasonryLayout, 500);
-    
-    // Also apply layout on window resize
-    window.addEventListener('resize', applyMasonryLayout);
-    
-    // Clean up
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', applyMasonryLayout);
-    };
-  }, [isLoading, applyMasonryLayout]); // Include applyMasonryLayout in dependencies
 
   return (
     <div className="min-h-screen">
