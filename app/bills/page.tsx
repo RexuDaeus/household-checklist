@@ -208,7 +208,7 @@ export default function BillsPage() {
           setUsers(usersData.filter(user => user.id !== session.user.id));
         }
 
-        // Load bills
+        // Load bills - make the query explicit to ensure we get all relevant bills
         const { data: billsData, error } = await supabase
           .from("bills")
           .select("*")
@@ -222,7 +222,10 @@ export default function BillsPage() {
         
         if (billsData) {
           // Log the bills for debugging
-          console.log("Loaded bills:", billsData);
+          console.log("Loaded bills from database:", billsData);
+          console.log("Bills where this user is payee:", billsData.filter(bill => bill.payee === session.user.id));
+          console.log("Bills where this user is a payer:", billsData.filter(bill => bill.payers.includes(session.user.id)));
+          
           setBills(billsData);
         }
         
@@ -261,10 +264,12 @@ export default function BillsPage() {
         created_by: currentUser.id,
         due_date: new Date(newBillDate).toISOString(),
         created_at: new Date().toISOString(),
-        notes: newBillNotes || null // Add notes back
+        notes: newBillNotes || null
       };
 
       console.log("Creating new bill:", newBill);
+      console.log("Payee user ID:", newBillPayee);
+      console.log("Payer user IDs:", payersIncludingCreator);
 
       // Optimistically update UI first
       const tempId = Date.now().toString();
@@ -297,6 +302,9 @@ export default function BillsPage() {
           });
         }
       }
+
+      // Refresh the page to ensure proper bill visibility
+      // await loadData();
 
       setNewBillName("");
       setNewBillAmount("");
@@ -702,21 +710,33 @@ export default function BillsPage() {
     return acc;
   }, {} as Record<string, Bill[]>);
 
-  // Separate bills where the current user is the payee
+  // Group my bills as payee by payers, excluding self-bills
   const myBillsAsPayee = billsByPayee[currentUser.id] || [];
   
-  // Group my bills as payee by payers, excluding self-bills
+  // We need to make sure ALL payers are correctly associated with each bill
+  // This is important for the "Money Owed to You" section
   const myBillsByPayer = myBillsAsPayee.reduce((acc, bill) => {
+    // For each bill where I'm the payee, group it by each payer
     bill.payers.forEach(payerId => {
-      if (payerId !== currentUser.id) { // Don't include yourself
+      // Skip bills where you're the only payer and payee (self-bills)
+      if (payerId !== currentUser.id || (bill.payers.length === 1 && bill.payee === currentUser.id)) {
         if (!acc[payerId]) {
           acc[payerId] = [];
         }
-        acc[payerId].push(bill);
+        // Make sure we don't add duplicate bills
+        if (!acc[payerId].some(existingBill => existingBill.id === bill.id)) {
+          acc[payerId].push(bill);
+        }
       }
     });
     return acc;
   }, {} as Record<string, Bill[]>);
+
+  // Add debugging logs to understand what's happening with bill grouping
+  console.log("Current user ID:", currentUser.id);
+  console.log("All bills:", bills);
+  console.log("Bills where I am payee:", myBillsAsPayee);
+  console.log("Bills grouped by payer:", myBillsByPayer);
   
   // Group bills that the current user is a payer for, excluding where they are also the payee
   const billsWhereIAmPayer = bills.filter(bill => 
@@ -732,6 +752,9 @@ export default function BillsPage() {
     acc[payeeKey].push(bill);
     return acc;
   }, {} as Record<string, Bill[]>);
+  
+  console.log("Bills where I am payer:", billsWhereIAmPayer);
+  console.log("Bills by payee where I am payer:", billsByPayeeWhereIAmPayer);
   
   // Calculate per person total for a bill
   const getPerPersonTotal = (bill: Bill): string => {
@@ -756,6 +779,21 @@ export default function BillsPage() {
         : [...prev, payerId]
     )
   }
+
+  // Add final debug logs before rendering
+  console.log("--- FINAL BILL VISIBILITY DEBUG ---");
+  console.log("Total bills:", bills.length);
+  console.log("Bills where I'm the payee:", myBillsAsPayee.length);
+  console.log("Bills grouped by payer (after processing):", 
+    Object.keys(myBillsByPayer).map(payerId => ({
+      payerId, 
+      payerName: getUsernameById(payerId), 
+      billCount: myBillsByPayer[payerId].length,
+      billIds: myBillsByPayer[payerId].map(bill => bill.id)
+    }))
+  );
+  console.log("Bills where I'm a payer (not payee):", billsWhereIAmPayer.length);
+  console.log("----------------------------------");
 
   return (
     <div className="min-h-screen">
@@ -915,13 +953,19 @@ export default function BillsPage() {
                 const groupTotal = calculateGroupTotal(payerBills);
                 const billsByDate = groupBillsByDate(payerBills);
                 
+                // Skip empty groups
+                if (payerBills.length === 0) {
+                  return null;
+                }
+                
                 return (
                   <div key={payerId} className="h-fit bill-card">
                     <SumikkoCard
                       title={
                         <div className="flex justify-between w-full items-center">
                           <div>Owed by {getUserDisplayElement(payerId)}</div>
-                          {currentUser?.id === bills.find(bill => bill.payers.includes(payerId))?.created_by && (
+                          {/* Only show mark all paid button if user created at least one of the bills */}
+                          {payerBills.some(bill => bill.created_by === currentUser.id) && (
                             <Button 
                               size="sm" 
                               variant="outline" 
