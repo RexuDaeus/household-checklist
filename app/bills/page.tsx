@@ -14,74 +14,66 @@ import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
 import React from "react"
 
-// Implement a proper masonry layout that actually works
+// Use a simpler and more reliable approach for the masonry layout using CSS grid
 function arrangeGridItems(gridId: string) {
   if (typeof window === 'undefined') return;
   
   const grid = document.getElementById(gridId);
   if (!grid) return;
   
-  // On small screens use a single column
+  // On mobile, use a single column
   if (window.innerWidth < 768) {
-    grid.style.display = 'block';
+    grid.style.display = 'flex';
+    grid.style.flexDirection = 'column';
+    grid.style.gap = '1.5rem';
     return;
   }
   
-  // Get all cards
-  const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
-  if (cards.length <= 1) return;
-  
-  // Set up a two-column grid
+  // Use CSS Grid with manual placement for better control
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
   grid.style.gap = '1.5rem';
   grid.style.alignItems = 'start';
   
-  // First, reset position and make all cards visible
+  // Get all the bill cards
+  const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
+  if (cards.length <= 1) return;
+  
+  // Reset card styles
   cards.forEach(card => {
-    card.style.gridColumn = '';
-    card.style.gridRow = '';
-    card.style.opacity = '1';
+    card.style.gridColumnStart = '';
+    card.style.gridRowStart = '';
     card.style.position = '';
     card.style.top = '';
     card.style.left = '';
+    card.style.width = '';
+    card.style.opacity = '1';
   });
   
-  // Force browser to calculate card heights
-  cards.forEach(card => card.offsetHeight);
+  // Force layout calculation
+  cards.forEach(card => card.getBoundingClientRect());
   
-  // Use a simpler approach - use absolute positioning 
-  // to create a true masonry layout
-  grid.style.position = 'relative';
-  grid.style.height = '2000px'; // Temporary height
+  // Create a manual grid layout - simple approach: arrange in order by height
+  let col1Height = 0;
+  let col2Height = 0;
   
-  let leftColTop = 0;
-  let rightColTop = 0;
-  const gapSize = 24; // 1.5rem in pixels
-  const columnWidth = (grid.clientWidth - gapSize) / 2;
-  
-  cards.forEach((card, index) => {
-    card.style.position = 'absolute';
-    card.style.width = `${columnWidth}px`;
+  // Process cards in DOM order to maintain logical grouping
+  cards.forEach((card, i) => {
+    // Force card to be visible and get its natural height
+    card.style.display = 'block';
+    const height = card.offsetHeight;
     
-    // Determine which column to place the card in
-    if (leftColTop <= rightColTop) {
-      // Place in left column
-      card.style.left = '0';
-      card.style.top = `${leftColTop}px`;
-      // Update left column height
-      leftColTop += card.offsetHeight + gapSize;
+    // Place in column with less height
+    if (col1Height <= col2Height) {
+      // Place in column 1
+      card.style.gridColumn = '1';
+      col1Height += height + 24; // Add height + gap
     } else {
-      // Place in right column
-      card.style.left = `${columnWidth + gapSize}px`;
-      card.style.top = `${rightColTop}px`;
-      // Update right column height
-      rightColTop += card.offsetHeight + gapSize;
+      // Place in column 2
+      card.style.gridColumn = '2';
+      col2Height += height + 24; // Add height + gap
     }
   });
-  
-  // Set the grid's height to the height of the tallest column
-  grid.style.height = `${Math.max(leftColTop, rightColTop)}px`;
 }
 
 export default function BillsPage() {
@@ -128,34 +120,37 @@ export default function BillsPage() {
     }
   }, []);
 
-  // Update useEffect to be more stable
+  // Update useEffect to be more reliable with the new layout approach
   useEffect(() => {
     if (typeof window === 'undefined' || isLoading) return;
     
-    // Skip the first render to avoid hook count mismatch
-    if (!hasMounted.current) {
-      hasMounted.current = true;
-      return;
-    }
+    // Apply layout after content has likely loaded
+    let layoutTimer: NodeJS.Timeout;
     
-    // Apply masonry layout after a short delay to allow DOM to render
-    const timer = setTimeout(() => {
+    const applyLayout = () => {
+      // Clear any existing timer
+      if (layoutTimer) clearTimeout(layoutTimer);
+      
+      // Initial immediate layout
       applyMasonryLayout();
       
-      // Apply again after images might have loaded
-      const imageTimer = setTimeout(applyMasonryLayout, 1000);
-      return () => clearTimeout(imageTimer);
-    }, 200);
-    
-    // Also apply layout on window resize
-    const handleResize = () => {
-      applyMasonryLayout();
+      // Try again after a delay to account for image loading, etc.
+      layoutTimer = setTimeout(applyMasonryLayout, 500);
     };
+    
+    // Apply layout on initial load
+    applyLayout();
+    
+    // Apply layout on window resize
+    const handleResize = () => {
+      applyLayout();
+    };
+    
     window.addEventListener('resize', handleResize);
     
     // Clean up
     return () => {
-      clearTimeout(timer);
+      if (layoutTimer) clearTimeout(layoutTimer);
       window.removeEventListener('resize', handleResize);
     };
   }, [isLoading, applyMasonryLayout]);
@@ -1058,6 +1053,9 @@ export default function BillsPage() {
                                             <span className="text-base">${bill.amount.toFixed(2)}</span>
                                           </div>
                                         </div>
+                                        <div className="text-muted-foreground">
+                                          Due date: {format(new Date(bill.due_date), "MMM d, yyyy")}
+                                        </div>
                                         {bill.notes && (
                                           <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
                                             <span className="font-semibold">Notes: </span>
@@ -1285,6 +1283,9 @@ export default function BillsPage() {
                                       <span className="text-muted-foreground">Total: </span>
                                       <span className="text-base">${bill.amount.toFixed(2)}</span>
                                     </div>
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    Due date: {format(new Date(bill.due_date), "MMM d, yyyy")}
                                   </div>
                                   {bill.notes && (
                                     <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
