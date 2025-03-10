@@ -12,6 +12,8 @@ export type Profile = {
   username: string;
   created_at: string;
   profile_picture_url?: string | null;
+  // Non-database fields (UI only)
+  is_current_user?: boolean;
 };
 
 export type Bill = {

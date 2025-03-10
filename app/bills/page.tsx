@@ -13,6 +13,8 @@ import { supabase } from "@/lib/supabase"
 import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
 import React from "react"
+import { ProfileAvatar } from "@/components/profile-avatar"
+import { UserDisplay } from "@/components/user-display"
 
 // Use a simpler and more reliable approach for the masonry layout using CSS grid
 function arrangeGridItems(gridId: string) {
@@ -29,72 +31,73 @@ function arrangeGridItems(gridId: string) {
     return;
   }
   
-  // Reset grid layout
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-  grid.style.columnGap = '1.5rem'; // Only horizontal gap, no row gap
-  grid.style.rowGap = '0'; // No vertical gap between items
-  grid.style.alignItems = 'start';
+  // Change to relative positioning container
+  grid.style.display = 'block';
+  grid.style.position = 'relative';
+  grid.style.width = '100%';
+  grid.style.height = 'auto';
   
   // Get all the bill cards
   const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
-  if (cards.length <= 1) return;
+  if (cards.length <= 1) {
+    // If only one card, just make it full width
+    if (cards.length === 1) {
+      const card = cards[0];
+      card.style.position = 'relative';
+      card.style.width = '100%';
+      card.style.marginBottom = '1.5rem';
+    }
+    return;
+  }
   
-  // Reset card styles
+  // First pass: set all cards to absolute and get measurements
   cards.forEach(card => {
-    card.style.gridColumnStart = '';
-    card.style.gridRowStart = '';
+    // Reset styles
     card.style.position = '';
     card.style.top = '';
     card.style.left = '';
     card.style.width = '';
-    card.style.opacity = '1';
-    card.style.marginTop = '0'; // Reset all margins
-    card.style.marginBottom = '0';
-  });
-  
-  // Create a manual grid layout
-  let col1Cards: HTMLElement[] = [];
-  let col2Cards: HTMLElement[] = [];
-  
-  // First, measure all cards to make decisions
-  const cardHeights = cards.map(card => {
+    card.style.marginTop = '';
+    card.style.marginBottom = '';
     card.style.display = 'block';
-    return card.offsetHeight;
   });
   
-  // Place cards alternating between columns, starting with the tallest ones
-  const indexedHeights = cardHeights.map((height, index) => ({ height, index }));
-  indexedHeights.sort((a, b) => b.height - a.height); // Sort by height descending
+  // Force reflow to ensure correct measurements
+  grid.getBoundingClientRect();
   
-  // Ensure logical groups stay together by processing in original document order
-  let col1Height = 0;
-  let col2Height = 0;
+  // Calculate column width
+  const containerWidth = grid.offsetWidth;
+  const columnWidth = (containerWidth - 24) / 2; // 24px is the gap
   
-  cards.forEach(card => {
-    // Place in column with less height
-    if (col1Height <= col2Height) {
-      card.style.gridColumn = '1';
-      
-      // Remove margin for the first card
-      if (col1Cards.length > 0) {
-        card.style.marginTop = '1.5rem';
-      }
-      
-      col1Cards.push(card);
-      col1Height += card.offsetHeight + (col1Cards.length > 1 ? 24 : 0); // Add margin height if not first
+  // Prep for layout
+  let leftColumnHeight = 0;
+  let rightColumnHeight = 0;
+  
+  // Second pass: position cards
+  cards.forEach((card, index) => {
+    // Get natural height
+    const cardHeight = card.offsetHeight;
+    
+    // Set width
+    card.style.position = 'absolute';
+    card.style.width = `${columnWidth}px`;
+    
+    // Decide which column to place in
+    if (leftColumnHeight <= rightColumnHeight) {
+      // Place in left column
+      card.style.left = '0';
+      card.style.top = `${leftColumnHeight}px`;
+      leftColumnHeight += cardHeight + 24; // Add card height + gap
     } else {
-      card.style.gridColumn = '2';
-      
-      // Remove margin for the first card
-      if (col2Cards.length > 0) {
-        card.style.marginTop = '1.5rem';
-      }
-      
-      col2Cards.push(card);
-      col2Height += card.offsetHeight + (col2Cards.length > 1 ? 24 : 0); // Add margin height if not first
+      // Place in right column
+      card.style.left = `${columnWidth + 24}px`; // Column width + gap
+      card.style.top = `${rightColumnHeight}px`;
+      rightColumnHeight += cardHeight + 24; // Add card height + gap
     }
   });
+  
+  // Set container height
+  grid.style.height = `${Math.max(leftColumnHeight, rightColumnHeight)}px`;
 }
 
 export default function BillsPage() {
@@ -126,6 +129,7 @@ export default function BillsPage() {
   })
   const router = useRouter()
   const [archivedBills, setArchivedBills] = useState<Bill[]>([])
+  const [archivedBillsCount, setArchivedBillsCount] = useState(0)
   const [showArchived, setShowArchived] = useState(false)
   const [newBillNotes, setNewBillNotes] = useState("")
 
@@ -179,94 +183,58 @@ export default function BillsPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        // Get current user session
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user) {
-          router.push("/login")
-          return
+        setIsLoading(true);
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.push("/login");
+          return;
         }
 
-        // Get current user profile
-        const { data: profile } = await supabase
+        // Load all users
+        const { data: usersData } = await supabase
           .from("profiles")
           .select("*")
-          .eq("id", session.user.id)
-          .single()
-
-        if (profile) {
-          setCurrentUser(profile)
-
-          // Get all users
-          const { data: fetchedUsers } = await supabase
-            .from("profiles")
-            .select("*")
-
-          if (fetchedUsers) {
-            setAllUsers(fetchedUsers);
-            setUsers(fetchedUsers.filter(user => user.id !== session.user.id))
-          }
-
-          // Get all bills where user is creator or payer
-          const { data: userBills } = await supabase
-            .from("bills")
-            .select("*")
-            .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}}`)
-
-          if (userBills) {
-            // Sort by due_date descending (newest first)
-            const sortedBills = userBills.sort((a, b) => 
-              new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
-            );
-            setBills(sortedBills)
-          }
-
-          // Set up real-time subscription
-          const channel = supabase
-            .channel("bills-channel-" + Date.now())
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "bills"
-              },
-              (payload) => {
-                if (payload.eventType === 'INSERT') {
-                  const newBill = payload.new as Bill;
-                  if (newBill.created_by === session.user.id || (newBill.payers && newBill.payers.includes(session.user.id))) {
-                    setBills(prevBills => {
-                      const updatedBills = [newBill, ...prevBills];
-                      return updatedBills.sort((a, b) => 
-                        new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
-                      );
-                    });
-                  }
-                } 
-                else if (payload.eventType === 'UPDATE') {
-                  setBills(prevBills => {
-                    const updatedBills = prevBills.map(bill => 
-                      bill.id === payload.new.id ? payload.new as Bill : bill
-                    );
-                    return updatedBills.sort((a, b) => 
-                      new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
-                    );
-                  });
-                }
-                else if (payload.eventType === 'DELETE') {
-                  setBills(prevBills => prevBills.filter(bill => bill.id !== payload.old.id));
-                }
-              }
-            )
-            .subscribe();
-
-          return () => {
-            channel.unsubscribe();
-          }
+          .order("username");
+        
+        if (usersData) {
+          setAllUsers(usersData);
+          
+          // Find current user
+          const currentUserData = usersData.find(user => user.id === session.user.id);
+          setCurrentUser(currentUserData || null);
+          
+          // Set user list excluding current user for payer selection
+          setUsers(usersData.filter(user => user.id !== session.user.id));
         }
+
+        // Load bills
+        const { data: billsData, error } = await supabase
+          .from("bills")
+          .select("*")
+          .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}},payee.eq.${session.user.id}`)
+          .order("created_at", { ascending: false });
+        
+        if (error) {
+          console.error("Error loading bills:", error);
+          return;
+        }
+        
+        if (billsData) {
+          setBills(billsData);
+        }
+        
+        // Load archived bills count
+        const { count } = await supabase
+          .from("archived_bills")
+          .select("*", { count: "exact", head: true })
+          .eq("payer_id", session.user.id);
+        
+        setArchivedBillsCount(count || 0);
       } catch (error) {
-        console.error("Error loading data:", error)
+        console.error("Error in loadData:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
     }
 
@@ -638,6 +606,19 @@ export default function BillsPage() {
     return (amount / payersCount).toFixed(2)
   }
 
+  const getUserById = (userId: string): Profile => {
+    if (userId === currentUser?.id) {
+      return { ...currentUser, is_current_user: true };
+    }
+    const user = allUsers.find(u => u.id === userId);
+    return user || { id: "unknown", username: "Unknown User", created_at: "", is_current_user: false };
+  }
+
+  const getUserDisplayElement = (userId: string): React.ReactNode => {
+    const user = getUserById(userId);
+    return <UserDisplay user={user} />;
+  }
+  
   const getUsernameById = (userId: string): string => {
     if (userId === currentUser?.id) return `${currentUser.username} (You)`;
     const user = allUsers.find(u => u.id === userId);
@@ -917,7 +898,7 @@ export default function BillsPage() {
                     <SumikkoCard
                       title={
                         <div className="flex justify-between w-full items-center">
-                          <div>Owed by {payerName}</div>
+                          <div>Owed by {getUserDisplayElement(payerId)}</div>
                           {currentUser?.id === bills.find(bill => bill.payers.includes(payerId))?.created_by && (
                             <Button 
                               size="sm" 
@@ -935,7 +916,7 @@ export default function BillsPage() {
                       <div className="space-y-6">
                         {Object.entries(billsByDate).map(([dateKey, dateBills]) => (
                           <div key={dateKey}>
-                            <h3 className="text-base font-bold text-secondary-foreground bg-secondary/20 py-1 px-2 rounded mb-3">{dateKey}</h3>
+                            <h3 className="font-medium text-sm text-primary mb-2">{dateKey}</h3>
                             <ul className="space-y-4">
                               {dateBills.map((bill) => (
                                 <li key={bill.id} className="sumikko-list-item">
@@ -1067,7 +1048,7 @@ export default function BillsPage() {
                                         </div>
                                         <div className="flex justify-between mt-2">
                                           <div className="text-muted-foreground">
-                                            Created by: {getUsernameById(bill.created_by)}
+                                            Created by: {getUserDisplayElement(bill.created_by)}
                                           </div>
                                           <div>
                                             <span className="text-muted-foreground">Total: </span>
@@ -1082,7 +1063,12 @@ export default function BillsPage() {
                                         )}
                                         <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
                                           <span className="font-semibold">Payers: </span>
-                                          {bill.payers.map(id => getUsernameById(id)).join(", ")}
+                                          {bill.payers.map((id, index) => (
+                                            <React.Fragment key={id}>
+                                              {index > 0 && ", "}
+                                              {getUserDisplayElement(id)}
+                                            </React.Fragment>
+                                          ))}
                                         </div>
                                       </div>
                                       {bill.created_by === currentUser.id && (
@@ -1164,7 +1150,11 @@ export default function BillsPage() {
                 return (
                   <div key={payee} className="h-fit bill-card">
                     <SumikkoCard
-                      title={`Owed to ${payeeDisplayName} `}
+                      title={
+                        <div className="flex justify-between w-full items-center">
+                          <div>Owed to {getUserDisplayElement(payee)}</div>
+                        </div>
+                      }
                       titleExtra={<span className="ml-1 text-base font-semibold text-primary">${perPersonTotal} • {payeeBills.length} bill{payeeBills.length !== 1 ? 's' : ''}</span>}
                     >
                       <ul className="space-y-4">
@@ -1301,7 +1291,7 @@ export default function BillsPage() {
                                       </div>
                                       <div className="flex justify-between mt-2">
                                         <div className="text-muted-foreground">
-                                          Created by: {getUsernameById(bill.created_by)}
+                                          Created by: {getUserDisplayElement(bill.created_by)}
                                         </div>
                                         <div>
                                           <span className="text-muted-foreground">Total: </span>
@@ -1316,7 +1306,12 @@ export default function BillsPage() {
                                       )}
                                       <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
                                         <span className="font-semibold">Payers: </span>
-                                        {bill.payers.map(id => getUsernameById(id)).join(", ")}
+                                        {bill.payers.map((id, index) => (
+                                          <React.Fragment key={id}>
+                                            {index > 0 && ", "}
+                                            {getUserDisplayElement(id)}
+                                          </React.Fragment>
+                                        ))}
                                       </div>
                                     </div>
                                     {bill.created_by === currentUser.id && (
