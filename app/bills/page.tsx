@@ -208,29 +208,54 @@ export default function BillsPage() {
         setUsers(usersData.filter(user => user.id !== session.user.id));
       }
 
-      // First, explicitly load bills where the user is the payee (for diagnostic purposes)
+      console.log("Current user ID:", session.user.id);
+
+      // Test query specifically for bills where user is payee
       const { data: payeeBills, error: payeeError } = await supabase
         .from("bills")
         .select("*")
-        .eq("payee", session.user.id)
-        .order("created_at", { ascending: false });
-        
+        .eq("payee", session.user.id);
+      
       if (payeeError) {
-        console.error("Error loading bills where user is payee:", payeeError);
+        console.error("Error in direct payee query:", payeeError);
       } else {
-        console.log("Bills where user is payee (dedicated query):", payeeBills?.length);
-        if (payeeBills) {
-          payeeBills.forEach(bill => {
-            console.log(`Payee bill ${bill.id}: title=${bill.title}, amount=${bill.amount}, payee=${bill.payee}, payers=${JSON.stringify(bill.payers)}, created_by=${bill.created_by}`);
-          });
-        }
+        console.log("Direct payee query results:", payeeBills?.length, payeeBills);
       }
       
-      // Now load all bills where user is involved (creator, payer, or payee)
+      // Test queries with different filter combinations
+      
+      // 1. First, get bills where created_by OR payers contains user
+      const { data: creatorOrPayerBills, error: cpError } = await supabase
+        .from("bills")
+        .select("*")
+        .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}}`)
+        .order("created_at", { ascending: false });
+        
+      if (cpError) {
+        console.error("Error in creator/payer query:", cpError);
+      } else {
+        console.log("Creator or payer bills:", creatorOrPayerBills?.length);
+      }
+      
+      // 2. Now, get bills where payee is user
+      const { data: onlyPayeeBills, error: opError } = await supabase
+        .from("bills")
+        .select("*")
+        .eq("payee", session.user.id)
+        .not("payers", "cs", `{${session.user.id}}`) // where user is not a payer
+        .order("created_at", { ascending: false });
+        
+      if (opError) {
+        console.error("Error in only-payee query:", opError);
+      } else {
+        console.log("Only payee bills (not payer):", onlyPayeeBills?.length, onlyPayeeBills);
+      }
+
+      // Use standard query for all bills
       const { data: billsData, error } = await supabase
         .from("bills")
         .select("*")
-        .or(`created_by.eq.${session.user.id},payers.cs.{${session.user.id}},payee.eq.${session.user.id}`)
+        .or(`created_by.eq.${session.user.id},payee.eq.${session.user.id},payers.cs.{${session.user.id}}`)
         .order("created_at", { ascending: false });
       
       if (error) {
@@ -238,29 +263,44 @@ export default function BillsPage() {
         return;
       }
       
+      // Combine bills from both queries to ensure all bills are included
+      let combinedBills: Bill[] = [];
+      
+      // First add bills from the main query
       if (billsData) {
-        console.log("Total bills loaded:", billsData.length);
-        
-        // Detailed logging for payee bills
-        const payeeBillsInMainQuery = billsData.filter(bill => bill.payee === session.user.id);
-        console.log("Bills where user is payee (from main query):", payeeBillsInMainQuery.length);
-        payeeBillsInMainQuery.forEach(bill => {
-          console.log(`Payee bill in main query ${bill.id}: title=${bill.title}, amount=${bill.amount}, payee=${bill.payee}, payers=${JSON.stringify(bill.payers)}, created_by=${bill.created_by}`);
-        });
-        
-        // Log bills where user is a payer but not the payee
-        const payerBillsInMainQuery = billsData.filter(bill => 
-          bill.payers.includes(session.user.id) && bill.payee !== session.user.id
-        );
-        console.log("Bills where user is a payer (not payee):", payerBillsInMainQuery.length);
-        payerBillsInMainQuery.forEach(bill => {
-          console.log(`Payer bill ${bill.id}: title=${bill.title}, amount=${bill.amount}, payee=${bill.payee}, payers=${JSON.stringify(bill.payers)}, created_by=${bill.created_by}`);
-        });
-        
-        // Make sure we have the correct bills
-        setBills(billsData);
+        combinedBills = [...billsData];
       }
       
+      // Then add bills from the only-payee query if they're not already included
+      if (onlyPayeeBills && onlyPayeeBills.length > 0) {
+        onlyPayeeBills.forEach(bill => {
+          if (!combinedBills.some(existingBill => existingBill.id === bill.id)) {
+            combinedBills.push(bill);
+          }
+        });
+      }
+      
+      console.log("Combined bills count:", combinedBills.length);
+      
+      if (billsData) {
+        console.log("Total bills loaded (main query):", billsData.length);
+        
+        // Log details about each bill for debugging
+        billsData.forEach(bill => {
+          console.log(`Bill ${bill.id}: title=${bill.title}, payee=${bill.payee}, payers=${JSON.stringify(bill.payers)}`);
+        });
+        
+        // Specifically check for bills where user is payee
+        const payeeBillsInMainQuery = billsData.filter(bill => bill.payee === session.user.id);
+        console.log("Bills where user is payee (main query):", payeeBillsInMainQuery.length);
+        payeeBillsInMainQuery.forEach(bill => {
+          console.log(`Payee bill ${bill.id}: payers=${JSON.stringify(bill.payers)}, created_by=${bill.created_by}`);
+        });
+        
+        // Save the combined bills
+        setBills(combinedBills);
+      }
+
       // Load archived bills count
       const { count } = await supabase
         .from("archived_bills")
@@ -289,24 +329,28 @@ export default function BillsPage() {
         payersIncludingCreator.push(currentUser.id);
       }
 
-      // Make sure the payee field is correctly set
-      console.log("Creating bill with payee:", newBillPayee);
-      console.log("Payee display name:", getUsernameById(newBillPayee));
+      // Log extended debugging info
+      console.log("Creating new bill with detailed info:");
+      console.log("- Payee:", newBillPayee);
+      console.log("- Payee is string?", typeof newBillPayee === 'string');
+      console.log("- Payee display name:", getUsernameById(newBillPayee));
+      console.log("- Payers:", payersIncludingCreator);
+      console.log("- Payers is array?", Array.isArray(payersIncludingCreator));
+      console.log("- Creator:", currentUser.id);
       
+      // Explicitly ensure all fields have the correct types
       const newBill = {
-        title: newBillName,
+        title: String(newBillName).trim(),
         amount: parseFloat(newBillAmount),
-        payee: newBillPayee,
+        payee: String(newBillPayee),
         payers: payersIncludingCreator,
         created_by: currentUser.id,
         due_date: new Date(newBillDate).toISOString(),
         created_at: new Date().toISOString(),
-        notes: newBillNotes || null
+        notes: newBillNotes ? String(newBillNotes) : null
       };
 
-      console.log("Creating new bill:", newBill);
-      console.log("Payee user ID:", newBillPayee);
-      console.log("Payer user IDs:", payersIncludingCreator);
+      console.log("Final bill object:", newBill);
 
       // Optimistically update UI first
       const tempId = Date.now().toString();
@@ -338,8 +382,8 @@ export default function BillsPage() {
             );
           });
           
-          // Force load data again to ensure proper visibility
-          loadData();
+          // Always force reload data to ensure proper bill visibility
+          await loadData();
         }
       }
 
@@ -495,45 +539,62 @@ export default function BillsPage() {
       
       // Get original bill before update
       const originalBill = bills.find(bill => bill.id === billId);
+      if (!originalBill) {
+        console.error("Original bill not found");
+        return;
+      }
+      
       console.log("Original bill:", originalBill);
       
-      // Check if the payee was removed as a payer
+      // Create a copy of the update data to ensure we don't modify editFormData
+      const updateData = {
+        title: editFormData.title,
+        amount: parseFloat(editFormData.amount),
+        payee: editFormData.payee,
+        payers: [...editFormData.payers], // Create a copy to avoid mutations
+        due_date: new Date(editFormData.due_date).toISOString(),
+        notes: editFormData.notes || null
+      };
+      
+      // Special handling: ensure payee is in payers if they were originally in payers
       const wasPayeeAPayer = originalBill?.payers.includes(originalBill.payee || "");
-      const isPayeeStillAPayer = editFormData.payers.includes(editFormData.payee);
+      const isPayeeStillAPayer = updateData.payers.includes(updateData.payee);
       
       console.log(`Payee was a payer: ${wasPayeeAPayer}, Payee is still a payer: ${isPayeeStillAPayer}`);
       
+      // Perform the update to Supabase
       const { data, error } = await supabase
         .from("bills")
-        .update({
-          title: editFormData.title,
-          amount: parseFloat(editFormData.amount),
-          payee: editFormData.payee,
-          payers: editFormData.payers,
-          due_date: new Date(editFormData.due_date).toISOString(),
-          notes: editFormData.notes
-        })
+        .update(updateData)
         .eq("id", billId)
         .select();
 
       if (error) {
-        console.error("Error updating bill:", error);
-        alert("Failed to update bill.");
+        console.error("Error updating bill in Supabase:", error);
+        alert("Failed to update bill: " + error.message);
       } else {
-        console.log("Bill updated successfully:", data);
+        console.log("Bill updated successfully in Supabase:", data);
 
-        // Update local state
-        setBills(prevBills => {
-          return prevBills.map(bill => {
-            if (bill.id === billId && data && data.length > 0) {
-              return data[0];
-            }
-            return bill;
+        if (data && data.length > 0) {
+          // Update local state immediately
+          setBills(prevBills => {
+            return prevBills.map(bill => {
+              if (bill.id === billId) {
+                return data[0];
+              }
+              return bill;
+            });
           });
-        });
-
-        // Always force reload data to ensure proper bill visibility
-        await loadData();
+          
+          // Force a complete reload to ensure we have the most up-to-date data
+          await loadData();
+          
+          console.log("Data reloaded after bill update");
+        } else {
+          console.warn("No data returned from update operation");
+          // Force reload anyway to be safe
+          await loadData();
+        }
       }
     } catch (error) {
       console.error("Error in handleSaveEdit:", error);
