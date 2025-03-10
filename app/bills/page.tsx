@@ -476,164 +476,208 @@ export default function BillsPage() {
   }
 
   const handleSaveEdit = async (billId: string) => {
+    if (!editFormData.title || !editFormData.amount || !editFormData.due_date || !editFormData.payee) return;
+
     try {
-      const { title, amount, payee, due_date, payers, notes } = editFormData;
+      console.log("Saving edited bill:", billId);
+      console.log("New bill data:", editFormData);
       
-      if (!title || !amount || payers.length === 0) {
-        alert("Please fill in all required fields and select at least one payer.");
-        return;
-      }
-      
-      const updatedBill = {
-        title,
-        amount: parseFloat(amount),
-        payee,
-        due_date: new Date(due_date).toISOString(),
-        payers,
-        notes: notes || null // Add notes back
-      };
-      
-      // Update UI optimistically
-      setBills(prevBills => 
-        prevBills.map(bill => 
-          bill.id === billId 
-            ? { ...bill, ...updatedBill } 
-            : bill
-        )
-      );
-      
-      // Update in database
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("bills")
-        .update(updatedBill)
-        .eq("id", billId);
-      
+        .update({
+          title: editFormData.title,
+          amount: parseFloat(editFormData.amount),
+          payee: editFormData.payee,
+          payers: editFormData.payers,
+          due_date: new Date(editFormData.due_date).toISOString(),
+          notes: editFormData.notes
+        })
+        .eq("id", billId)
+        .select();
+
       if (error) {
         console.error("Error updating bill:", error);
-        alert("Failed to update the bill on the server.");
-        
-        // Revert optimistic update
-        const { data } = await supabase
-          .from("bills")
-          .select("*")
-          .eq("id", billId);
-          
-        if (data && data.length > 0) {
-          setBills(prevBills => 
-            prevBills.map(bill => 
-              bill.id === billId ? data[0] : bill
-            )
-          );
-        }
+        alert("Failed to update bill.");
       } else {
-        console.log("Successfully updated bill");
+        console.log("Bill updated successfully:", data);
+
+        // Update local state
+        setBills(prevBills => {
+          return prevBills.map(bill => {
+            if (bill.id === billId && data && data.length > 0) {
+              return data[0];
+            }
+            return bill;
+          });
+        });
+
+        // Force reload data to ensure proper bill visibility
+        await loadData();
       }
-      
-      // Reset edit state
-      setEditingBill(null);
     } catch (error) {
-      console.error("Error saving edit:", error);
-      alert("An error occurred while saving changes.");
+      console.error("Error in handleSaveEdit:", error);
+      alert("An unexpected error occurred while saving the bill.");
+    } finally {
+      setEditingBill(null);
     }
-  };
+  }
 
   // Update the handleMarkAsPaid function to handle individual payer archiving
   const handleMarkAsPaid = async (billId: string, payerId: string) => {
-    // Find the bill
-    const bill = bills.find(bill => bill.id === billId);
-    
-    // Only allow the creator to mark bills as paid
-    if (!bill || bill.created_by !== currentUser?.id) return;
-    
     try {
-      console.log("Archiving bill:", bill, "payer:", payerId);
+      const billToArchive = bills.find(bill => bill.id === billId);
       
-      // Create a copy of the bill with only this payer
-      const archivedBill = { 
-        ...bill, 
-        payers: [payerId], // Only include the specific payer being archived
+      if (!billToArchive) return;
+      
+      console.log(`Marking bill ${billId} as paid for payer ${payerId}`);
+      
+      // Optimistically update UI
+      setBills(prevBills => prevBills.filter(bill => bill.id !== billId));
+      
+      // Archive the bill in the database
+      const archivedRecord = {
+        bill_data: billToArchive,
+        payer_id: payerId,
         archived_at: new Date().toISOString()
       };
       
-      // Add to archived_bills table
-      const { data: archivedData, error: archiveError } = await supabase
+      const { error: archiveError } = await supabase
         .from("archived_bills")
-        .insert([{
-          original_bill_id: billId,
-          payer_id: payerId,
-          bill_data: archivedBill,
-          archived_at: new Date().toISOString()
-        }])
-        .select();
-
+        .insert([archivedRecord]);
+      
       if (archiveError) {
         console.error("Error archiving bill:", archiveError);
-        alert("Failed to archive bill: " + archiveError.message);
+        alert("Failed to mark bill as paid in the archive.");
+        
+        // Revert UI change
+        setBills(prevBills => [...prevBills, billToArchive]);
         return;
       }
       
-      console.log("Successfully archived bill, archived record:", archivedData);
-
-      // Remove this payer from the original bill
-      const updatedPayers = bill.payers.filter(p => p !== payerId);
+      // Now remove the payer from the bill's payers array
+      const updatedPayers = billToArchive.payers.filter(p => p !== payerId);
       
+      // If there are no payers left, delete the bill entirely
       if (updatedPayers.length === 0) {
-        // If no payers left, delete the bill
         const { error: deleteError } = await supabase
           .from("bills")
           .delete()
           .eq("id", billId);
-
+        
         if (deleteError) {
-          console.error("Error deleting bill:", deleteError);
-          alert("Failed to delete bill on the server.");
-          return;
+          console.error("Error deleting bill with no payers:", deleteError);
+          alert("Failed to delete bill after all payers were marked as paid.");
+          
+          // Revert UI change again
+          setBills(prevBills => [...prevBills, billToArchive]);
+        } else {
+          console.log("Successfully deleted bill after all payers marked as paid");
+          
+          // Update archived bills count
+          setArchivedBillsCount(prev => prev + 1);
+          
+          // Force reload data to ensure proper visibility
+          await loadData();
         }
-
-        // Update local state
-        setBills(prevBills => prevBills.filter(b => b.id !== billId));
       } else {
-        // Update the original bill's payers list
+        // Otherwise, update the bill with the reduced payers list
         const { error: updateError } = await supabase
           .from("bills")
           .update({ payers: updatedPayers })
           .eq("id", billId);
-
+        
         if (updateError) {
-          console.error("Error updating original bill:", updateError);
-          alert("Failed to update original bill on the server.");
-          return;
+          console.error("Error updating bill payers:", updateError);
+          alert("Failed to update bill payers after marking as paid.");
+          
+          // Revert UI change
+          setBills(prevBills => [...prevBills, billToArchive]);
+        } else {
+          console.log("Successfully marked bill as paid for payer");
+          
+          // Update archived bills count
+          setArchivedBillsCount(prev => prev + 1);
+          
+          // If this user is still the payee, they should still see the bill
+          // Force reload to ensure proper visibility
+          await loadData();
         }
-
-        // Update local state
-        setBills(prevBills => prevBills.map(b => 
-          b.id === billId ? { ...b, payers: updatedPayers } : b
-        ));
       }
     } catch (error) {
-      console.error("Error marking bill as paid:", error);
-      alert("An unexpected error occurred while archiving the bill.");
+      console.error("Error in handleMarkAsPaid:", error);
+      alert("An unexpected error occurred while marking the bill as paid.");
     }
   };
 
   // Add this function to handle marking all bills as paid for a specific payer
   const handleMarkAllAsPaid = async (payerId: string) => {
-    // Get all bills where this payer is included and current user is creator
-    const billsToArchive = bills.filter(bill => 
-      bill.created_by === currentUser?.id && 
-      bill.payers.includes(payerId)
-    );
-    
-    if (billsToArchive.length === 0) return;
-    
-    // Confirm with the user
-    if (!window.confirm(`Mark all ${billsToArchive.length} bills as paid for ${getUsernameById(payerId)}?`)) {
-      return;
-    }
-    
-    // Process each bill
-    for (const bill of billsToArchive) {
-      await handleMarkAsPaid(bill.id, payerId);
+    try {
+      // Find all bills for this payer where current user is the payee
+      const billsToArchive = myBillsByPayer[payerId] || [];
+      
+      if (billsToArchive.length === 0) return;
+      
+      // Confirm with the user
+      if (!window.confirm(`Are you sure you want to mark all ${billsToArchive.length} bills from ${getUsernameById(payerId)} as paid?`)) {
+        return;
+      }
+
+      console.log(`Marking all bills for payer ${payerId} as paid`);
+      
+      // Process each bill
+      for (const bill of billsToArchive) {
+        // Archive the bill
+        const archivedRecord = {
+          bill_data: bill,
+          payer_id: payerId,
+          archived_at: new Date().toISOString()
+        };
+        
+        await supabase
+          .from("archived_bills")
+          .insert([archivedRecord]);
+        
+        // Remove the payer from the bill
+        const updatedPayers = bill.payers.filter(p => p !== payerId);
+        
+        if (updatedPayers.length === 0) {
+          // Delete the bill if no payers left
+          await supabase
+            .from("bills")
+            .delete()
+            .eq("id", bill.id);
+        } else {
+          // Update the bill with the reduced payers list
+          await supabase
+            .from("bills")
+            .update({ payers: updatedPayers })
+            .eq("id", bill.id);
+        }
+      }
+      
+      // Update UI by removing these bills from the list
+      setBills(prevBills => {
+        return prevBills.filter(bill => {
+          // Keep a bill if it's not in the list of bills to archive,
+          // or if the payer is not the only payer
+          return !billsToArchive.some(b => b.id === bill.id) || 
+                 bill.payers.filter(p => p !== payerId).length > 0;
+        });
+      });
+      
+      // Update archived bills count
+      setArchivedBillsCount(prev => prev + billsToArchive.length);
+      
+      // Force reload to ensure proper visibility
+      await loadData();
+      
+      console.log("Successfully marked all bills as paid");
+    } catch (error) {
+      console.error("Error marking all bills as paid:", error);
+      alert("An error occurred while marking all bills as paid. Some bills may not have been processed.");
+      
+      // Force reload to get the current state
+      await loadData();
     }
   };
 
@@ -740,26 +784,37 @@ export default function BillsPage() {
   const myBillsAsPayee = bills.filter(bill => bill.payee === currentUser.id);
   console.log("Direct filter of bills where I'm payee:", myBillsAsPayee.length);
 
-  // Group bills where I'm the payee by payer
+  // Create a special "creator" category for bills where the payee is not a payer
+  // This ensures bills always show up for the payee, even if they are not a payer
   const myBillsByPayer: Record<string, Bill[]> = {};
 
   // Loop through each bill where I'm the payee
   myBillsAsPayee.forEach(bill => {
-    // For each payer in the bill, add this bill to their group
-    bill.payers.forEach(payerId => {
-      // Skip myself to avoid self-bills unless I'm the only payer
-      if (payerId !== currentUser.id || bill.payers.length === 1) {
-        if (!myBillsByPayer[payerId]) {
-          myBillsByPayer[payerId] = [];
-        }
-        
-        // Check if this bill is already in the payer's group to avoid duplicates
-        const billExists = myBillsByPayer[payerId].some(existingBill => existingBill.id === bill.id);
-        if (!billExists) {
-          myBillsByPayer[payerId].push(bill);
-        }
+    // Handle the case where there are no payers other than possibly the payee
+    if (bill.payers.length === 0 || (bill.payers.length === 1 && bill.payers[0] === currentUser.id)) {
+      // Put it under the creator's name if the bill has no other payers
+      const creatorId = bill.created_by;
+      if (!myBillsByPayer[creatorId]) {
+        myBillsByPayer[creatorId] = [];
       }
-    });
+      myBillsByPayer[creatorId].push(bill);
+    } else {
+      // For each payer in the bill, add this bill to their group
+      bill.payers.forEach(payerId => {
+        // Skip myself as a payer to avoid self-bills unless I'm the only payer
+        if (payerId !== currentUser.id || bill.payers.length === 1) {
+          if (!myBillsByPayer[payerId]) {
+            myBillsByPayer[payerId] = [];
+          }
+          
+          // Check if this bill is already in the payer's group to avoid duplicates
+          const billExists = myBillsByPayer[payerId].some(existingBill => existingBill.id === bill.id);
+          if (!billExists) {
+            myBillsByPayer[payerId].push(bill);
+          }
+        }
+      });
+    }
   });
 
   // Group bills that the current user is a payer for, excluding where they are also the payee
