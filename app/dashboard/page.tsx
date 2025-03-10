@@ -109,6 +109,14 @@ export default function Dashboard() {
         .single();
       
       if (error) {
+        console.error("Error loading key holders:", error);
+        
+        // Check if the table doesn't exist
+        if (error.code === "42P01") { // PostgreSQL error code for "relation does not exist"
+          setKeyHolderError("The key_holders table doesn't exist in the database. Please run the SQL setup.");
+          return;
+        }
+        
         if (error.code === "PGRST116") {
           console.log("No key holder data found, creating initial record");
           // No data found, create initial record
@@ -117,17 +125,31 @@ export default function Dashboard() {
             other: { name: "", hasKey: false }
           };
           
-          const { error: insertError } = await supabase
-            .from("key_holders")
-            .insert([{ data: initialData }]);
+          try {
+            const { error: insertError } = await supabase
+              .from("key_holders")
+              .insert([{ data: initialData }]);
             
-          if (insertError) {
-            console.error("Error creating initial key holders data:", insertError);
-          } else {
-            console.log("Successfully created initial key holders data");
+            if (insertError) {
+              console.error("Error creating initial key holders data:", insertError);
+              
+              // Check if it's a table doesn't exist error
+              if (insertError.code === "42P01") {
+                setKeyHolderError("The key_holders table doesn't exist in the database. Please run the SQL setup.");
+              } else {
+                setKeyHolderError("Failed to initialize key holders data. Please try again later.");
+              }
+            } else {
+              console.log("Successfully created initial key holders data");
+              // Try to load data again after a short delay
+              setTimeout(loadKeyHolders, 1000);
+            }
+          } catch (e) {
+            console.error("Unexpected error creating initial key holders data:", e);
+            setKeyHolderError("An unexpected error occurred. Please try again later.");
           }
         } else {
-          console.error("Error loading key holders:", error);
+          setKeyHolderError(`Failed to load key holders data: ${error.message}`);
         }
       } else if (keyHoldersData?.data) {
         // Update keyHolders state with the saved data
@@ -154,9 +176,12 @@ export default function Dashboard() {
         
         console.log("Successfully applied key holders data to state");
         setKeyDataInitialized(true);
+        // Clear any error
+        setKeyHolderError(null);
       }
     } catch (error) {
       console.error("Error loading key holders:", error);
+      setKeyHolderError("Failed to load key holders data. Please try again later.");
     } finally {
       setIsLoadingKeyHolders(false);
     }
@@ -275,10 +300,17 @@ export default function Dashboard() {
       console.log("Saving key holders data:", keyHoldersData);
       
       // Get the current record
-      const { data: existingData } = await supabase
+      const { data: existingData, error: selectError } = await supabase
         .from("key_holders")
         .select("id")
         .single();
+      
+      // If there's an error and it indicates the table doesn't exist, show error
+      if (selectError && selectError.code === "42P01") {
+        console.error("Table doesn't exist:", selectError);
+        setKeyHolderError("The key_holders table doesn't exist in the database. Please run the SQL setup.");
+        return false;
+      }
       
       let result;
       if (existingData) {
@@ -296,6 +328,14 @@ export default function Dashboard() {
       
       if (result.error) {
         console.error("Error saving key holders data:", result.error);
+        
+        // Check if it's a table doesn't exist error
+        if (result.error.code === "42P01") {
+          setKeyHolderError("The key_holders table doesn't exist in the database. Please run the SQL setup.");
+        } else {
+          setKeyHolderError(`Failed to save key holders data: ${result.error.message}`);
+        }
+        
         return false;
       } else {
         console.log("Successfully saved key holders data");
@@ -303,6 +343,7 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Error saving key holders:", error);
+      setKeyHolderError("An unexpected error occurred while saving key holders data.");
       return false;
     }
   };

@@ -122,25 +122,38 @@ export default function ProfilePage() {
       const fileExt = file.name.split(".").pop();
       const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
       
-      // Use only 'public' bucket which is created by default in Supabase
-      // Instead of trying to create a bucket or use a custom one
+      // Use 'avatars' bucket which should be created in Supabase SQL setup
+      const BUCKET_NAME = 'avatars';
+      const FOLDER_PATH = 'profiles';
+      
+      console.log(`Attempting to upload to ${BUCKET_NAME}/${FOLDER_PATH}/${fileName}`);
+      
+      // Upload to the avatars bucket
       const { error: uploadError, data: uploadData } = await supabase.storage
-        .from('public')
-        .upload(`avatars/${fileName}`, file, {
+        .from(BUCKET_NAME)
+        .upload(`${FOLDER_PATH}/${fileName}`, file, {
           cacheControl: '3600',
           upsert: true
         });
 
       if (uploadError) {
         console.error("Error uploading profile picture:", uploadError);
-        setUploadError(`Failed to upload profile picture: ${uploadError.message}`);
+        
+        // Provide more specific error guidance
+        if (uploadError.message.includes("bucket not found") || 
+            (uploadError as any).statusCode === 404 ||
+            uploadError.message.includes("404")) {
+          setUploadError(`The storage bucket '${BUCKET_NAME}' doesn't exist. Please run the SQL setup in Supabase to create it.`);
+        } else {
+          setUploadError(`Failed to upload profile picture: ${uploadError.message}`);
+        }
         return;
       }
 
       // Get the public URL for the uploaded file
       const { data: { publicUrl } } = supabase.storage
-        .from('public')
-        .getPublicUrl(`avatars/${fileName}`);
+        .from(BUCKET_NAME)
+        .getPublicUrl(`${FOLDER_PATH}/${fileName}`);
 
       // Update the user's profile with the new profile picture URL
       const { error: updateError } = await supabase

@@ -14,36 +14,62 @@ import type { Bill, Profile } from "@/lib/supabase"
 import { format } from "date-fns"
 import React from "react"
 
-// Rewrite the masonry arrangement function to be more robust
+// Completely rewrite the masonry arrangement function for better card placement
 function arrangeGridItems(gridId: string) {
   if (typeof window === 'undefined') return;
   
   const grid = document.getElementById(gridId);
   if (!grid) return;
   
-  // Reset grid display first
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(300px, 1fr))';
-  grid.style.gap = '1.5rem';
-  
-  // On small screens we want a single column
+  // Only apply masonry layout on medium and larger screens
   if (window.innerWidth < 768) {
     grid.style.gridTemplateColumns = '1fr';
     return;
   }
-  
+
+  // Get all cards
   const cards = Array.from(grid.querySelectorAll('.bill-card')) as HTMLElement[];
-  // If we have 2 or fewer cards, no need for complex masonry
-  if (cards.length <= 2) return;
+  if (cards.length <= 1) return;
   
-  // For larger screens use a 2-column layout with manual card placement
+  // Reset grid
+  grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+  grid.style.gap = '1.5rem';
   
-  // Reset all cards
+  // First, reset all cards to their natural positioning
   cards.forEach(card => {
-    card.style.gridColumn = '';
-    card.style.gridRow = '';
-    card.style.marginBottom = '1.5rem';
+    card.style.gridRow = 'auto';
+    card.style.gridColumn = 'auto';
+  });
+  
+  // Force layout calculation to get heights
+  cards.forEach(card => card.offsetHeight);
+  
+  // Sort cards by height, then place them in a true masonry layout
+  // This ensures shorter cards are placed below taller ones in the same column
+  let leftColHeight = 0;
+  let rightColHeight = 0;
+  
+  // Sort cards by height (tallest first) for better layout
+  const sortedCards = [...cards].sort((a, b) => b.offsetHeight - a.offsetHeight);
+  
+  // Place cards in columns based on minimum height
+  sortedCards.forEach((card, index) => {
+    if (index === 0) {
+      // First card always goes in the left column
+      card.style.gridColumn = '1';
+      card.style.gridRow = '1';
+      leftColHeight = card.offsetHeight;
+    } else {
+      // Choose the column with less height
+      if (leftColHeight <= rightColHeight) {
+        card.style.gridColumn = '1';
+        leftColHeight += card.offsetHeight;
+      } else {
+        card.style.gridColumn = '2';
+        rightColHeight += card.offsetHeight;
+      }
+    }
   });
 }
 
@@ -65,12 +91,14 @@ export default function BillsPage() {
     payee: string;
     due_date: string;
     payers: string[];
+    notes: string;
   }>({
     title: "",
     amount: "",
     payee: "",
     due_date: "",
     payers: [],
+    notes: ""
   })
   const router = useRouter()
   const [archivedBills, setArchivedBills] = useState<Bill[]>([])
@@ -226,7 +254,8 @@ export default function BillsPage() {
         payers: payersIncludingCreator,
         created_by: currentUser.id,
         due_date: new Date(newBillDate).toISOString(),
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        notes: newBillNotes || null // Add notes back
       };
 
       console.log("Creating new bill:", newBill);
@@ -398,6 +427,7 @@ export default function BillsPage() {
       payee: bill.payee || "",
       due_date: format(new Date(bill.due_date), "yyyy-MM-dd"),
       payers: [...bill.payers],
+      notes: bill.notes || ""
     });
   }
 
@@ -407,7 +437,7 @@ export default function BillsPage() {
 
   const handleSaveEdit = async (billId: string) => {
     try {
-      const { title, amount, payee, due_date, payers } = editFormData;
+      const { title, amount, payee, due_date, payers, notes } = editFormData;
       
       if (!title || !amount || payers.length === 0) {
         alert("Please fill in all required fields and select at least one payer.");
@@ -419,7 +449,8 @@ export default function BillsPage() {
         amount: parseFloat(amount),
         payee,
         due_date: new Date(due_date).toISOString(),
-        payers
+        payers,
+        notes: notes || null // Add notes back
       };
       
       // Update UI optimistically
@@ -913,6 +944,16 @@ export default function BillsPage() {
                                         className="w-full"
                                       />
                                       <div className="space-y-2">
+                                        <Label>Notes (Optional)</Label>
+                                        <textarea
+                                          value={editFormData.notes || ""}
+                                          onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                                          placeholder="Additional notes about this bill"
+                                          className="w-full p-2 rounded-md border border-input resize-vertical"
+                                          rows={3}
+                                        />
+                                      </div>
+                                      <div className="space-y-2">
                                         <Label>Select Payers (Edit)</Label>
                                         <div className="grid grid-cols-2 gap-2">
                                           <div className="flex items-center space-x-2">
@@ -978,8 +1019,8 @@ export default function BillsPage() {
                                       </div>
                                     </div>
                                   ) : (
-                                    // View mode - Fix the mobile layout issues
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+                                    // View mode - Fix the layout for consistent buttons
+                                    <div className="flex flex-col w-full">
                                       <div className="flex-grow">
                                         <div className="font-medium flex items-baseline justify-between">
                                           <span className="text-base">{bill.title}</span>
@@ -997,13 +1038,19 @@ export default function BillsPage() {
                                             <span className="text-base">${bill.amount.toFixed(2)}</span>
                                           </div>
                                         </div>
+                                        {bill.notes && (
+                                          <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
+                                            <span className="font-semibold">Notes: </span>
+                                            {bill.notes}
+                                          </div>
+                                        )}
                                         <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
                                           <span className="font-semibold">Payers: </span>
                                           {bill.payers.map(id => getUsernameById(id)).join(", ")}
                                         </div>
                                       </div>
                                       {bill.created_by === currentUser.id && (
-                                        <div className="flex flex-wrap mt-2 md:mt-0 space-x-2">
+                                        <div className="flex flex-row justify-end mt-3 space-x-2">
                                           <Button
                                             variant="default"
                                             size="sm"
@@ -1125,6 +1172,16 @@ export default function BillsPage() {
                                   className="w-full"
                                 />
                                 <div className="space-y-2">
+                                  <Label>Notes (Optional)</Label>
+                                  <textarea
+                                    value={editFormData.notes || ""}
+                                    onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                                    placeholder="Additional notes about this bill"
+                                    className="w-full p-2 rounded-md border border-input resize-vertical"
+                                    rows={3}
+                                  />
+                                </div>
+                                <div className="space-y-2">
                                   <Label>Select Payers (Edit)</Label>
                                   <div className="grid grid-cols-2 gap-2">
                                     <div className="flex items-center space-x-2">
@@ -1190,8 +1247,8 @@ export default function BillsPage() {
                                 </div>
                               </div>
                             ) : (
-                              // View mode - Fix the mobile layout issues
-                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+                              // View mode - Fix the layout for consistent buttons
+                              <div className="flex flex-col w-full">
                                 <div className="flex-grow">
                                   <div className="font-medium flex items-baseline justify-between">
                                     <span className="text-base">{bill.title}</span>
@@ -1209,13 +1266,19 @@ export default function BillsPage() {
                                       <span className="text-base">${bill.amount.toFixed(2)}</span>
                                     </div>
                                   </div>
+                                  {bill.notes && (
+                                    <div className="text-sm mt-1 text-muted-foreground bg-secondary/10 p-2 rounded">
+                                      <span className="font-semibold">Notes: </span>
+                                      {bill.notes}
+                                    </div>
+                                  )}
                                   <div className="text-sm font-medium mt-1 bg-secondary/10 p-1 rounded">
                                     <span className="font-semibold">Payers: </span>
                                     {bill.payers.map(id => getUsernameById(id)).join(", ")}
                                   </div>
                                 </div>
                                 {bill.created_by === currentUser.id && (
-                                  <div className="flex flex-wrap mt-2 md:mt-0 space-x-2">
+                                  <div className="flex flex-row justify-end mt-3 space-x-2">
                                     <Button
                                       variant="default"
                                       size="sm"
