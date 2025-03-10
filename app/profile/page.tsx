@@ -2,25 +2,33 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import Image from "next/image";
-import { supabase } from "@/lib/supabase";
 import { SumikkoHeader } from "@/components/sumikko-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Trash } from "lucide-react";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { supabase } from "@/lib/supabase";
+import { ProfileAvatar } from "@/components/profile-avatar";
+import { EmojiPicker } from "@/components/emoji-picker";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -95,91 +103,31 @@ export default function ProfilePage() {
     }
   };
 
-  const handleProfilePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEmojiSelect = async (emoji: string) => {
+    if (!currentUser) return;
+    
     try {
-      setUploadError(null);
-      
-      if (!event.target.files || event.target.files.length === 0) {
-        return;
-      }
-
-      const file = event.target.files[0];
-      const fileSize = file.size / 1024 / 1024; // Convert to MB
-      
-      if (fileSize > 2) {
-        setUploadError("File size exceeds 2MB limit");
-        return;
-      }
-
-      if (!file.type.startsWith("image/")) {
-        setUploadError("Only image files are allowed");
-        return;
-      }
-
-      setUploading(true);
-
-      // Generate a unique file name
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
-      
-      // Use 'avatars' bucket which should be created in Supabase SQL setup
-      const BUCKET_NAME = 'avatars';
-      const FOLDER_PATH = 'profiles';
-      
-      console.log(`Attempting to upload to ${BUCKET_NAME}/${FOLDER_PATH}/${fileName}`);
-      
-      // Upload to the avatars bucket
-      const { error: uploadError, data: uploadData } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(`${FOLDER_PATH}/${fileName}`, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadError) {
-        console.error("Error uploading profile picture:", uploadError);
-        
-        // Provide more specific error guidance
-        if (uploadError.message.includes("bucket not found") || 
-            (uploadError as any).statusCode === 404 ||
-            uploadError.message.includes("404")) {
-          setUploadError(`The storage bucket '${BUCKET_NAME}' doesn't exist. Please run the SQL setup in Supabase to create it.`);
-        } else {
-          setUploadError(`Failed to upload profile picture: ${uploadError.message}`);
-        }
-        return;
-      }
-
-      // Get the public URL for the uploaded file
-      const { data: { publicUrl } } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(`${FOLDER_PATH}/${fileName}`);
-
-      // Update the user's profile with the new profile picture URL
-      const { error: updateError } = await supabase
+      // Update the user's profile with the selected emoji
+      const { error } = await supabase
         .from("profiles")
-        .update({ profile_picture_url: publicUrl })
+        .update({ profile_picture_url: emoji })
         .eq("id", currentUser.id);
 
-      if (updateError) {
-        console.error("Error updating profile with new picture URL:", updateError);
-        setUploadError("Failed to update profile with new picture");
-        return;
+      if (error) {
+        throw error;
       }
 
-      // Update the local state
-      setProfilePictureUrl(publicUrl);
+      // Update local state
+      setProfilePictureUrl(emoji);
       setCurrentUser({
         ...currentUser,
-        profile_picture_url: publicUrl
+        profile_picture_url: emoji
       });
-
-      alert("Profile picture updated successfully!");
+      
+      return Promise.resolve();
     } catch (error) {
-      console.error("Error in profile picture upload process:", error);
-      setUploadError("An unexpected error occurred");
-    } finally {
-      setUploading(false);
+      console.error("Error updating profile emoji:", error);
+      return Promise.reject(error);
     }
   };
 
@@ -219,8 +167,8 @@ export default function ProfilePage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmation !== username) {
-      alert("Confirmation text doesn't match your username");
+    if (!currentUser || deleteConfirmation !== currentUser.username) {
+      alert("Please enter your username correctly to confirm account deletion");
       return;
     }
 
@@ -233,36 +181,26 @@ export default function ProfilePage() {
 
       if (profileError) {
         console.error("Error deleting profile:", profileError);
-        alert("Failed to delete profile");
+        alert("Failed to delete profile data. Please try again.");
         return;
       }
 
-      // Then delete the user's auth account
-      const { error: authError } = await supabase.auth.admin.deleteUser(
-        currentUser.id
-      );
-
-      if (authError) {
-        console.error("Error deleting auth user:", authError);
-        alert("Failed to delete account");
-        return;
-      }
-
-      // Sign out
+      // Then sign out and return to login page
       await supabase.auth.signOut();
-      
-      // Redirect to login
       router.push("/login");
     } catch (error) {
       console.error("Error deleting account:", error);
-      alert("Failed to delete account. Please try again later.");
+      alert("An error occurred while deleting your account. Please try again.");
     }
   };
 
-  if (isLoading || !currentUser) {
+  if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary border-r-2 border-b-2"></div>
+      <div className="min-h-screen">
+        <SumikkoHeader showBackButton />
+        <div className="max-w-xl mx-auto px-4 py-6">
+          <p>Loading profile...</p>
+        </div>
       </div>
     );
   }
@@ -280,40 +218,15 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col items-center justify-center space-y-4">
-              <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20">
-                {profilePictureUrl ? (
-                  <Image 
-                    src={profilePictureUrl}
-                    alt={`${username}'s profile picture`}
-                    fill
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-secondary text-secondary-foreground text-4xl font-bold">
-                    {username.charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              
-              <div className="w-full">
-                <Label htmlFor="profile-picture" className="block mb-2">Profile Picture</Label>
-                <div className="flex flex-col space-y-2">
-                  <Input
-                    id="profile-picture"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProfilePictureUpload}
-                    disabled={uploading}
-                    className="cursor-pointer w-full"
-                  />
-                  {uploadError && (
-                    <p className="text-sm text-destructive">{uploadError}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Supported formats: JPG, PNG, GIF. Max size: 2MB.
-                  </p>
-                </div>
-              </div>
+              {currentUser && (
+                <EmojiPicker 
+                  user={currentUser} 
+                  onEmojiSelect={handleEmojiSelect} 
+                />
+              )}
+              <p className="text-sm text-muted-foreground">
+                Click on your profile to choose an emoji
+              </p>
             </div>
             
             <div className="space-y-2">
@@ -333,25 +246,20 @@ export default function ProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">Change Password</CardTitle>
+            <CardTitle>Password</CardTitle>
+            <CardDescription>Change your account password</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {passwordSuccess && (
-              <Alert className="bg-green-50 text-green-800 border-green-200">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Success</AlertTitle>
-                <AlertDescription>{passwordSuccess}</AlertDescription>
-              </Alert>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current Password</Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </div>
             
-            {passwordError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{passwordError}</AlertDescription>
-              </Alert>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="new-password">New Password</Label>
               <Input
@@ -359,7 +267,6 @@ export default function ProfilePage() {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
               />
             </div>
             
@@ -370,59 +277,61 @@ export default function ProfilePage() {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
               />
             </div>
             
-            <Button 
-              onClick={handleChangePassword} 
-              className="w-full mt-2"
-            >
-              Change Password
-            </Button>
+            {passwordError && (
+              <p className="text-sm text-destructive">{passwordError}</p>
+            )}
+            
+            {passwordSuccess && (
+              <p className="text-sm text-green-600">{passwordSuccess}</p>
+            )}
           </CardContent>
+          <CardFooter>
+            <Button onClick={handleChangePassword}>Change Password</Button>
+          </CardFooter>
         </Card>
-
-        <Card className="border-destructive">
+        
+        <Card className="border-destructive/50 bg-destructive/5">
           <CardHeader>
-            <CardTitle className="text-xl font-bold text-destructive">Danger Zone</CardTitle>
+            <CardTitle className="text-destructive">Danger Zone</CardTitle>
           </CardHeader>
           <CardContent>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="destructive" className="w-full">
-                  <Trash className="h-4 w-4 mr-2" />
-                  Delete Account
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="text-destructive">Delete Account</DialogTitle>
-                  <DialogDescription>
-                    This action cannot be undone. It will permanently delete your account and remove your data from our servers.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <p className="text-sm text-muted-foreground">
-                    To confirm, please type your username: <strong>{username}</strong>
-                  </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Deleting your account is permanent and cannot be undone. All your data will be removed.
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Delete Account</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete your account and all associated data.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-2 py-4">
+                  <Label htmlFor="confirm-delete">Type your username to confirm</Label>
                   <Input
+                    id="confirm-delete"
                     value={deleteConfirmation}
                     onChange={(e) => setDeleteConfirmation(e.target.value)}
-                    placeholder="Enter your username"
+                    placeholder={username}
                   />
                 </div>
-                <DialogFooter>
-                  <Button
-                    variant="destructive"
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
                     onClick={handleDeleteAccount}
-                    disabled={deleteConfirmation !== username}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
-                    Permanently Delete Account
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                    Delete My Account
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardContent>
         </Card>
       </div>
