@@ -222,8 +222,6 @@ export default function BillsPage() {
         console.log("Direct payee query results:", payeeBills?.length, payeeBills);
       }
       
-      // Test queries with different filter combinations
-      
       // 1. First, get bills where created_by OR payers contains user
       const { data: creatorOrPayerBills, error: cpError } = await supabase
         .from("bills")
@@ -237,18 +235,17 @@ export default function BillsPage() {
         console.log("Creator or payer bills:", creatorOrPayerBills?.length);
       }
       
-      // 2. Now, get bills where payee is user
-      const { data: onlyPayeeBills, error: opError } = await supabase
+      // 2. Get all bills where user is the payee
+      const { data: allPayeeBills, error: apError } = await supabase
         .from("bills")
         .select("*")
         .eq("payee", session.user.id)
-        .not("payers", "cs", `{${session.user.id}}`) // where user is not a payer
         .order("created_at", { ascending: false });
         
-      if (opError) {
-        console.error("Error in only-payee query:", opError);
+      if (apError) {
+        console.error("Error in all-payee query:", apError);
       } else {
-        console.log("Only payee bills (not payer):", onlyPayeeBills?.length, onlyPayeeBills);
+        console.log("All payee bills:", allPayeeBills?.length, allPayeeBills);
       }
 
       // Use standard query for all bills
@@ -271,9 +268,9 @@ export default function BillsPage() {
         combinedBills = [...billsData];
       }
       
-      // Then add bills from the only-payee query if they're not already included
-      if (onlyPayeeBills && onlyPayeeBills.length > 0) {
-        onlyPayeeBills.forEach(bill => {
+      // Then add bills from the all-payee query if they're not already included
+      if (allPayeeBills && allPayeeBills.length > 0) {
+        allPayeeBills.forEach(bill => {
           if (!combinedBills.some(existingBill => existingBill.id === bill.id)) {
             combinedBills.push(bill);
           }
@@ -871,9 +868,8 @@ export default function BillsPage() {
 
   // Loop through each bill where I'm the payee
   myBillsAsPayee.forEach(bill => {
-    // Special case: if there are no payers or if the only payer is the payee (self),
-    // group it under the creator so it's still visible
-    if (bill.payers.length === 0 || (bill.payers.length === 1 && bill.payers[0] === currentUser.id)) {
+    // If there are no payers at all, group under creator
+    if (bill.payers.length === 0) {
       const creatorId = bill.created_by;
       if (!myBillsByPayer[creatorId]) {
         myBillsByPayer[creatorId] = [];
@@ -882,8 +878,20 @@ export default function BillsPage() {
       if (!billExists) {
         myBillsByPayer[creatorId].push(bill);
       }
-    } else {
-      // Normal case: Group by each payer (multiple payers for one bill)
+    } 
+    // If there's only one payer and it's the current user (payee paying themselves)
+    else if (bill.payers.length === 1 && bill.payers[0] === currentUser.id) {
+      const creatorId = bill.created_by;
+      if (!myBillsByPayer[creatorId]) {
+        myBillsByPayer[creatorId] = [];
+      }
+      const billExists = myBillsByPayer[creatorId].some(existingBill => existingBill.id === bill.id);
+      if (!billExists) {
+        myBillsByPayer[creatorId].push(bill);
+      }
+    }
+    // Normal case: Group by each payer
+    else {
       let added = false;
       bill.payers.forEach(payerId => {
         // Skip myself as a payer to avoid showing bills I owe to myself
@@ -901,8 +909,8 @@ export default function BillsPage() {
         }
       });
       
-      // If for some reason the bill wasn't added to any payer (e.g., all payers are the current user),
-      // add it under the creator's name as a fallback
+      // If no payers were added (could happen if all payers are the current user),
+      // add it under the creator's name
       if (!added) {
         const creatorId = bill.created_by;
         if (!myBillsByPayer[creatorId]) {
